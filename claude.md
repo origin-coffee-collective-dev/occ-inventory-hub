@@ -31,6 +31,7 @@ This is a **B2B dropshipping/inventory hub** Shopify embedded app that connects 
 | Auth | Shopify App Bridge, OAuth 2.0 |
 | API | Shopify GraphQL Admin API (October25 version) |
 | Build | Vite 6.3, TypeScript 5.9 |
+| Hosting | Vercel (Node.js runtime) |
 
 ---
 
@@ -86,6 +87,10 @@ occ-inventory-hub/
 | `/webhooks.compliance.tsx` | GDPR webhook handlers |
 | `/webhooks.app.uninstalled.tsx` | App uninstall cleanup |
 | `/webhooks.app.scopes_update.tsx` | Permission change handler |
+| `/partner.install.tsx` | Partner OAuth initiation |
+| `/partner.callback.tsx` | Partner OAuth callback |
+| `/partner.success.tsx` | Authorization success page |
+| `/partner.error.tsx` | Authorization error page |
 
 ### Utilities
 
@@ -94,6 +99,7 @@ occ-inventory-hub/
 | `app/lib/utils/price.ts` | Margin markup calculations (default 30%) |
 | `app/lib/utils/sku.ts` | Partner SKU generation/parsing (`PARTNER-{shop}-{sku}`) |
 | `app/lib/partners/sync.server.ts` | Partner record upsert on app load |
+| `app/lib/partners/oauth.server.ts` | Partner OAuth utilities (URL generation, token exchange) |
 | `app/lib/shopify/utils/pagination.ts` | Generic GraphQL pagination helpers |
 | `app/lib/shopify/queries/products.ts` | Products GraphQL query |
 
@@ -154,6 +160,27 @@ DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/post
 DEFAULT_MARGIN=0.30  # Override default markup margin
 SHOP_CUSTOM_DOMAIN=  # Custom shop domain if needed
 ```
+
+---
+
+## Deployment (Vercel)
+
+```bash
+# Deploy to Vercel
+npm run deploy:vercel
+
+# Or use Vercel CLI directly
+vercel --prod
+```
+
+### Vercel Configuration
+- `vercel.json` - Node.js 20 runtime, build commands
+- Environment variables must be set in Vercel dashboard:
+  - `SHOPIFY_API_KEY`
+  - `SHOPIFY_API_SECRET`
+  - `SHOPIFY_APP_URL` (your Vercel deployment URL)
+  - `SCOPES`
+  - `DATABASE_URL`
 
 ---
 
