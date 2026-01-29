@@ -45,6 +45,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const reason = url.searchParams.get("reason") || "default";
   const details = url.searchParams.get("details");
 
+  console.log("=== PARTNER ERROR PAGE HIT ===");
+  console.log("Reason:", reason);
+  console.log("Details:", details);
+  console.log("Full URL:", request.url);
+  console.log("==============================");
+
   const errorInfo = ERROR_MESSAGES[reason] || ERROR_MESSAGES.default;
 
   return { ...errorInfo, details };
