@@ -14,12 +14,8 @@ import {
  * Redirects to Shopify's OAuth authorization page.
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  console.log("=== PARTNER INSTALL ROUTE HIT ===");
-
   const url = new URL(request.url);
   const shopParam = url.searchParams.get("shop");
-
-  console.log("Shop param:", shopParam);
 
   if (!shopParam) {
     return redirect("/partner/error?reason=missing_shop");
