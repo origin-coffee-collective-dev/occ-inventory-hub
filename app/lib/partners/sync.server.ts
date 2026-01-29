@@ -5,5 +5,6 @@ export async function ensurePartnerExists(shop: string, accessToken?: string, sc
   const { error } = await upsertPartner(shop, accessToken, scope);
   if (error) {
     console.error(`Failed to upsert partner ${shop}:`, error);
+    throw new Error(`Failed to store partner credentials: ${error}`);
   }
 }

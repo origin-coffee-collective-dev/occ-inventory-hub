@@ -143,15 +143,22 @@ export async function upsertPartner(
 ): Promise<{ error: string | null }> {
   try {
     const client = getSupabaseClient();
+    console.log(`[upsertPartner] Starting upsert for shop: ${shop}`);
 
     // Check if partner exists
-    const { data: existing } = await client
+    const { data: existing, error: selectError } = await client
       .from('partners')
       .select('id')
       .eq('shop', shop)
       .single();
 
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error(`[upsertPartner] Select error:`, selectError);
+      return { error: selectError.message };
+    }
+
     if (existing) {
+      console.log(`[upsertPartner] Updating existing partner: ${shop}`);
       // Update existing partner
       const { error } = await client
         .from('partners')
@@ -165,10 +172,15 @@ export async function upsertPartner(
         })
         .eq('shop', shop);
 
-      if (error) return { error: error.message };
+      if (error) {
+        console.error(`[upsertPartner] Update error:`, error);
+        return { error: error.message };
+      }
+      console.log(`[upsertPartner] Successfully updated partner: ${shop}`);
     } else {
+      console.log(`[upsertPartner] Inserting new partner: ${shop}`);
       // Insert new partner
-      const { error } = await client
+      const { data, error } = await client
         .from('partners')
         .insert({
           shop,
@@ -176,13 +188,19 @@ export async function upsertPartner(
           scope,
           is_active: true,
           is_deleted: false,
-        });
+        })
+        .select();
 
-      if (error) return { error: error.message };
+      if (error) {
+        console.error(`[upsertPartner] Insert error:`, error);
+        return { error: error.message };
+      }
+      console.log(`[upsertPartner] Successfully inserted partner:`, data);
     }
 
     return { error: null };
   } catch (err) {
+    console.error(`[upsertPartner] Exception:`, err);
     return { error: 'Failed to upsert partner' };
   }
 }
