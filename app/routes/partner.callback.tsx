@@ -17,10 +17,14 @@ import { ensurePartnerExists } from "~/lib/partners/sync.server";
  * Exchanges the authorization code for an access token and stores it.
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  console.log("[partner.callback] Route hit");
+
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const shopParam = url.searchParams.get("shop");
   const state = url.searchParams.get("state");
+
+  console.log("[partner.callback] Params:", { code: !!code, shop: shopParam, state: !!state });
 
   // Validate required parameters
   if (!code || !shopParam || !state) {
@@ -57,11 +61,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // Store partner credentials in database
+  console.log("[partner.callback] About to call ensurePartnerExists for:", shop);
   try {
     await ensurePartnerExists(shop, tokenResult.accessToken, tokenResult.scope);
-    console.log("Partner authorized successfully:", shop);
+    console.log("[partner.callback] Partner authorized successfully:", shop);
   } catch (error) {
-    console.error("Failed to store partner credentials:", error);
+    console.error("[partner.callback] Failed to store partner credentials:", error);
     return redirect("/partner/error?reason=database_error");
   }
 
