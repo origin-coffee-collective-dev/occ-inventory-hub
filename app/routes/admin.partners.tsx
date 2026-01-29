@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
-import prisma from "~/db.server";
+import { getAllPartners } from "~/lib/supabase.server";
 import {
   Table,
   TableBody,
@@ -14,33 +14,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Store, CheckCircle, XCircle, Clock } from "lucide-react";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const partners = await prisma.partner.findMany({
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      shop: true,
-      isActive: true,
-      isDeleted: true,
-      accessToken: true,
-      scope: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: {
-          productMappings: true,
-          partnerOrders: true,
-        },
-      },
-    },
-  });
+  const { data: partners, error } = await getAllPartners();
+
+  if (error) {
+    console.error("Failed to fetch partners:", error);
+  }
 
   return {
     partners: partners.map((p) => ({
-      ...p,
-      hasAccessToken: !!p.accessToken,
-      accessToken: undefined, // Don't expose the token to the client
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
+      id: p.id,
+      shop: p.shop,
+      isActive: p.is_active,
+      isDeleted: p.is_deleted,
+      hasAccessToken: !!p.access_token,
+      scope: p.scope,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      // Counts not available in simple query - can add later if needed
+      _count: {
+        productMappings: 0,
+        partnerOrders: 0,
+      },
     })),
   };
 };

@@ -1,6 +1,10 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
-import db from "../db.server";
+import {
+  createSyncLog,
+  softDeletePartner,
+  deactivateProductMappings,
+} from "~/lib/supabase.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { topic, shop, payload } = await authenticate.webhook(request);
@@ -13,12 +17,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // We don't store customer PII - only business transaction records
       console.log(`Customer data request for shop ${shop}`, payload);
 
-      await db.syncLog.create({
-        data: {
-          syncType: "gdpr_data_request",
-          status: "completed",
-          itemsProcessed: 1,
-        },
+      await createSyncLog({
+        syncType: "gdpr_data_request",
+        status: "completed",
+        itemsProcessed: 1,
       });
       break;
     }
@@ -28,12 +30,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // We don't store customer PII - only business transaction records
       console.log(`Customer redact request for shop ${shop}`, payload);
 
-      await db.syncLog.create({
-        data: {
-          syncType: "gdpr_customers_redact",
-          status: "completed",
-          itemsProcessed: 1,
-        },
+      await createSyncLog({
+        syncType: "gdpr_customers_redact",
+        status: "completed",
+        itemsProcessed: 1,
       });
       break;
     }
@@ -43,64 +43,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Soft delete: remove credentials but retain business records
       console.log(`Shop redact request for shop ${shop}`);
 
-      const partner = await db.partner.findUnique({
-        where: { shop },
-        include: {
-          _count: {
-            select: {
-              productMappings: true,
-              partnerOrders: true,
-            },
-          },
-        },
-      });
+      const { partnerId, error: deleteError } = await softDeletePartner(shop);
 
-      if (partner) {
-        // Log what we're about to do
-        console.log(
-          `SHOP_REDACT: Soft-deleting partner ${shop}. ` +
-          `Retaining ${partner._count.productMappings} product mappings and ` +
-          `${partner._count.partnerOrders} orders for business records.`
-        );
-
-        // Soft delete the partner - clear credentials but keep record
-        await db.partner.update({
-          where: { shop },
-          data: {
-            accessToken: null,  // Remove credential (GDPR requirement)
-            isActive: false,
-            isDeleted: true,
-            deletedAt: new Date(),
-          },
-        });
+      if (partnerId) {
+        console.log(`SHOP_REDACT: Soft-deleting partner ${shop}`);
 
         // Mark product mappings as inactive (but retain for records)
-        await db.productMapping.updateMany({
-          where: { partnerShop: shop },
-          data: { isActive: false },
-        });
+        const { error: mappingError } = await deactivateProductMappings(shop);
+        if (mappingError) {
+          console.error(`Failed to deactivate product mappings for ${shop}:`, mappingError);
+        }
 
         // Log the soft deletion
-        await db.syncLog.create({
-          data: {
-            partnerId: partner.id,
-            syncType: "gdpr_shop_redact",
-            status: "completed",
-            itemsProcessed: 1,
-            itemsUpdated: 1,
-          },
+        await createSyncLog({
+          partnerId,
+          syncType: "gdpr_shop_redact",
+          status: "completed",
+          itemsProcessed: 1,
+          itemsUpdated: 1,
         });
 
         console.log(`Soft-deleted partner ${shop} - credentials removed, business records retained`);
       } else {
+        if (deleteError) {
+          console.error(`Error during shop redact for ${shop}:`, deleteError);
+        }
         console.log(`No partner found for shop ${shop} during shop redact`);
 
-        await db.syncLog.create({
-          data: {
-            syncType: "gdpr_shop_redact",
-            status: "completed",
-            itemsProcessed: 0,
-          },
+        await createSyncLog({
+          syncType: "gdpr_shop_redact",
+          status: "completed",
+          itemsProcessed: 0,
         });
       }
       break;
