@@ -2,7 +2,7 @@
 
 client_id = "3309c2c1d9b6aa4f3fd418b21b6b47a7"
 name = "occ-inventory-hub"
-application_url = "https://example.com"
+application_url = "https://occ-inventory-hub.vercel.app"
 embedded = true
 
 [build]
@@ -10,7 +10,7 @@ automatically_update_urls_on_dev = true
 include_config_on_deploy = true
 
 [webhooks]
-api_version = "2026-04"
+api_version = "2025-01"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
@@ -29,4 +29,8 @@ api_version = "2026-04"
 scopes = "read_products,read_inventory,write_orders"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [
+  "https://occ-inventory-hub.vercel.app/auth/callback",
+  "https://occ-inventory-hub.vercel.app/auth/shopify/callback",
+  "https://occ-inventory-hub.vercel.app/partner/callback"
+]
