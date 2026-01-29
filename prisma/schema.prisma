@@ -1,0 +1,122 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Shopify Sessions - managed by @shopify/shopify-app-session-storage-prisma
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false) @map("is_online")
+  scope               String?
+  expires             DateTime?
+  accessToken         String    @map("access_token")
+  userId              BigInt?   @map("user_id")
+  firstName           String?   @map("first_name")
+  lastName            String?   @map("last_name")
+  email               String?
+  accountOwner        Boolean   @default(false) @map("account_owner")
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false) @map("email_verified")
+  refreshToken        String?   @map("refresh_token")
+  refreshTokenExpires DateTime? @map("refresh_token_expires")
+
+  @@map("sessions")
+}
+
+// Partner stores with access tokens
+model Partner {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shop        String    @unique @db.VarChar(255)
+  accessToken String?   @map("access_token") @db.Text
+  scope       String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  productMappings ProductMapping[]
+  partnerOrders   PartnerOrder[]
+  syncLogs        SyncLog[]
+
+  @@map("partners")
+}
+
+// Links partner variants to your variants
+model ProductMapping {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  partnerId        String?  @map("partner_id") @db.Uuid
+  partnerShop      String   @map("partner_shop") @db.VarChar(255)
+  partnerProductId String   @map("partner_product_id") @db.VarChar(255)
+  partnerVariantId String   @map("partner_variant_id") @db.VarChar(255)
+  myProductId      String   @map("my_product_id") @db.VarChar(255)
+  myVariantId      String   @map("my_variant_id") @db.VarChar(255)
+  partnerSku       String?  @map("partner_sku") @db.VarChar(255)
+  mySku            String   @map("my_sku") @db.VarChar(255)
+  margin           Decimal  @default(0.30) @db.Decimal(5, 4)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@unique([partnerShop, partnerVariantId])
+  @@index([partnerId], map: "idx_product_mappings_partner_id")
+  @@index([mySku], map: "idx_product_mappings_my_sku")
+  @@index([partnerVariantId], map: "idx_product_mappings_partner_variant_id")
+  @@map("product_mappings")
+}
+
+// Tracks orders created on partner stores
+model PartnerOrder {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  myOrderId        String   @map("my_order_id") @db.VarChar(255)
+  myOrderName      String   @map("my_order_name") @db.VarChar(255)
+  partnerId        String?  @map("partner_id") @db.Uuid
+  partnerShop      String   @map("partner_shop") @db.VarChar(255)
+  partnerOrderId   String?  @map("partner_order_id") @db.VarChar(255)
+  partnerOrderName String?  @map("partner_order_name") @db.VarChar(255)
+  status           String   @default("pending") @db.VarChar(50)
+  errorMessage     String?  @map("error_message") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([myOrderId], map: "idx_partner_orders_my_order_id")
+  @@index([partnerId], map: "idx_partner_orders_partner_id")
+  @@index([status], map: "idx_partner_orders_status")
+  @@map("partner_orders")
+}
+
+// Audit trail for sync operations
+model SyncLog {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  partnerId      String?   @map("partner_id") @db.Uuid
+  syncType       String    @map("sync_type") @db.VarChar(50)
+  status         String    @db.VarChar(50)
+  itemsProcessed Int       @default(0) @map("items_processed")
+  itemsCreated   Int       @default(0) @map("items_created")
+  itemsUpdated   Int       @default(0) @map("items_updated")
+  itemsFailed    Int       @default(0) @map("items_failed")
+  errorMessage   String?   @map("error_message") @db.Text
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz
+
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId], map: "idx_sync_logs_partner_id")
+  @@index([syncType], map: "idx_sync_logs_sync_type")
+  @@index([startedAt], map: "idx_sync_logs_started_at")
+  @@map("sync_logs")
+}
