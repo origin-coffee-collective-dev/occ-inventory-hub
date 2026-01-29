@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import db from "../db.server";
+import { getPartnerByShop } from "~/lib/supabase.server";
 import { PRODUCTS_QUERY, type ProductsQueryResult } from "~/lib/shopify/queries/products";
 import type { ShopifyProduct } from "~/types/shopify";
 
@@ -43,20 +43,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Normalize shop domain
   const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
 
-  // Fetch partner from database
-  const partner = await db.partner.findUnique({
-    where: { shop: shopDomain },
-  });
+  // Fetch partner from database using Supabase SDK
+  const { data: partner, error: partnerError } = await getPartnerByShop(shopDomain);
+
+  if (partnerError) {
+    console.error(`Error fetching partner ${shopDomain}:`, partnerError);
+    return Response.json({ error: "Database error fetching partner" }, { status: 500 });
+  }
 
   if (!partner) {
     return Response.json({ error: "Partner not found" }, { status: 404 });
   }
 
-  if (!partner.isActive || partner.isDeleted) {
+  if (!partner.is_active || partner.is_deleted) {
     return Response.json({ error: "Partner is not active" }, { status: 403 });
   }
 
-  if (!partner.accessToken) {
+  if (!partner.access_token) {
     return Response.json({ error: "Partner credentials have been revoked" }, { status: 403 });
   }
 
@@ -72,7 +75,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': partner.accessToken,
+          'X-Shopify-Access-Token': partner.access_token,
         },
         body: JSON.stringify({
           query: PRODUCTS_QUERY,
