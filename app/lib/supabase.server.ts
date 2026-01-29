@@ -445,6 +445,28 @@ export async function deleteSession(id: string): Promise<{
   }
 }
 
+// Update session scope
+export async function updateSessionScope(id: string, scope: string): Promise<{
+  success: boolean;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('sessions')
+      .update({ scope })
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: 'Failed to update session scope' };
+  }
+}
+
 // Delete all sessions for a shop
 export async function deleteSessionsByShop(shop: string): Promise<{
   success: boolean;
