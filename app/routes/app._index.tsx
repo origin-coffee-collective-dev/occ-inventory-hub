@@ -23,10 +23,10 @@ export default function Index() {
       <s-section heading="How It Works">
         <s-stack direction="block" gap="base">
           <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-heading>1. Product Import</s-heading>
+            <s-heading>1. Product Catalog Access</s-heading>
             <s-text>
-              We import selected products from your catalog with adjusted retail
-              pricing.
+              We access your product catalog to import selected items with
+              adjusted retail pricing.
             </s-text>
           </s-box>
 
@@ -35,21 +35,6 @@ export default function Index() {
             <s-text>
               Inventory levels sync regularly between our stores to prevent
               overselling and keep stock accurate.
-            </s-text>
-          </s-box>
-
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-heading>3. Order Creation</s-heading>
-            <s-text>
-              Wholesale orders are placed at the end of each business day.
-            </s-text>
-          </s-box>
-
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-heading>4. Fulfillment</s-heading>
-            <s-text>
-              You ship orders to our fulfillment center, and we handle final
-              delivery to customers.
             </s-text>
           </s-box>
         </s-stack>
@@ -62,9 +47,6 @@ export default function Index() {
           </s-list-item>
           <s-list-item>
             <strong>Read Inventory</strong> — Sync inventory levels
-          </s-list-item>
-          <s-list-item>
-            <strong>Create Orders</strong> — Create orders for fulfillment
           </s-list-item>
         </s-unordered-list>
       </s-section>
