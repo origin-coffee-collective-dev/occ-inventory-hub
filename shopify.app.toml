@@ -27,6 +27,9 @@ api_version = "2025-01"
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_products,read_inventory,write_orders"
 
+[access]
+direct_api_mode = "offline"
+
 [auth]
 redirect_urls = [
   "https://occ-inventory-hub.vercel.app/auth/callback",
