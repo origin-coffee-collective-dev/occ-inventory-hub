@@ -27,7 +27,7 @@ This is a **B2B dropshipping/inventory hub** Shopify embedded app that connects 
 | Framework | React Router 7.12 (not Remix) |
 | Frontend | React 18.3, Shopify Polaris web components |
 | Backend | Node.js, React Router server |
-| Database | PostgreSQL (Supabase), Prisma ORM 6.16 |
+| Database | PostgreSQL (Supabase) |
 | Auth | Shopify App Bridge, OAuth 2.0 |
 | API | Shopify GraphQL Admin API (October25 version) |
 | Build | Vite 6.3, TypeScript 5.9 |
@@ -49,11 +49,9 @@ occ-inventory-hub/
 │   │   └── utils/                # Price & SKU utilities
 │   ├── types/                    # TypeScript type definitions
 │   ├── shopify.server.ts         # Shopify auth configuration
-│   ├── db.server.ts              # Prisma client singleton
+│   ├── supabase.server.ts        # Supabase client singleton
 │   ├── root.tsx                  # Root layout component
 │   └── routes.ts                 # React Router configuration
-├── prisma/
-│   └── schema.prisma             # Database schema
 ├── supabase/
 │   └── migrations/               # SQL migration files
 ├── extensions/                   # Shopify extensions (empty)
@@ -71,10 +69,9 @@ occ-inventory-hub/
 
 | File | Purpose |
 |------|---------|
-| `app/shopify.server.ts` | Shopify auth setup with Prisma session storage |
-| `app/db.server.ts` | Singleton Prisma client (prevents dev mode duplicates) |
+| `app/shopify.server.ts` | Shopify auth setup with Supabase session storage |
+| `app/lib/supabase.server.ts` | Supabase client singleton |
 | `shopify.app.toml` | App scopes, webhooks, API version configuration |
-| `prisma/schema.prisma` | Database models and relations |
 
 ### Routes
 
@@ -116,7 +113,7 @@ occ-inventory-hub/
 
 ### Models
 
-**Session** - Managed by `@shopify/shopify-app-session-storage-prisma`
+**Session** - Managed by custom Supabase session storage
 - Stores OAuth sessions with tokens, user info, expiration
 
 **Partner** - Connected supplier stores
@@ -192,11 +189,6 @@ npm install
 
 # Local development with hot reload
 npm run dev
-
-# Database migrations
-npm run prisma migrate dev    # Create new migration
-npm run prisma migrate deploy # Apply migrations
-npm run prisma generate       # Regenerate client
 
 # Build for production
 npm run build
@@ -297,7 +289,7 @@ write_orders    - Create orders on partner stores
 3. **Custom/private app** - not public App Store listing
 4. **No user-facing dashboard** - API-only operations
 5. **Margin-based pricing** - not fixed markup
-6. **Session managed by Prisma** via `@shopify/shopify-app-session-storage-prisma`
+6. **Session managed by Supabase** via custom session storage adapter
 7. **React Router 7** (not Remix) - use `react-router` imports
 8. **Shopify Polaris** uses web components (`<s-app-nav>`, `<s-link>`)
 
