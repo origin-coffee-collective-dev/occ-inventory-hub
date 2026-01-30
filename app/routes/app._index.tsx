@@ -16,9 +16,7 @@ export default function Index() {
     <s-page heading="OCC Inventory Hub">
       <s-section heading={`Welcome, ${shop}`}>
         <s-paragraph>
-          Your store is connected to Origin Coffee Collective. We'll import
-          your products to our retail storefront and route customer orders back
-          to you for fulfillment.
+          Your store is connected to Origin Coffee Collective.
         </s-paragraph>
       </s-section>
 
@@ -28,7 +26,7 @@ export default function Index() {
             <s-heading>1. Product Import</s-heading>
             <s-text>
               We import selected products from your catalog with adjusted retail
-              pricing. You maintain full control of your product data.
+              pricing.
             </s-text>
           </s-box>
 
@@ -43,8 +41,7 @@ export default function Index() {
           <s-box padding="base" borderWidth="base" borderRadius="base">
             <s-heading>3. Order Creation</s-heading>
             <s-text>
-              When customers purchase your products on our store, orders are
-              automatically created on your store for processing.
+              Wholesale orders are placed at the end of each business day.
             </s-text>
           </s-box>
 
