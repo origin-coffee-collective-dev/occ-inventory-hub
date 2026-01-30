@@ -119,19 +119,7 @@ export async function exchangeCodeForToken(
     const data = (await response.json()) as {
       access_token: string;
       scope: string;
-      expires_in?: number;
-      associated_user_scope?: string;
-      associated_user?: object;
     };
-
-    // Log full response to diagnose token type
-    console.log("=== TOKEN EXCHANGE RESPONSE ===");
-    console.log("Token prefix:", data.access_token?.substring(0, 10));
-    console.log("Has expires_in:", !!data.expires_in);
-    console.log("Has associated_user:", !!data.associated_user);
-    console.log("Token type:", data.expires_in ? "ONLINE (expires)" : "OFFLINE (permanent)");
-    console.log("Full response keys:", Object.keys(data));
-    console.log("===============================");
 
     return {
       accessToken: data.access_token,
