@@ -36,6 +36,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const redirectUri = `${appUrl}/partner/callback`;
   const installUrl = generateInstallUrl(shop, redirectUri);
 
+  console.log("=== INSTALL URL GENERATED ===");
+  console.log(installUrl);
+  console.log("=============================");
+
   return redirect(installUrl);
 };
 
