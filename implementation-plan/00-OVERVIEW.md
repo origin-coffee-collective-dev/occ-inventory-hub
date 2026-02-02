@@ -25,7 +25,37 @@
 
 ---
 
+## Progress Tracker
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Dev Environment Setup | ✅ Complete |
+| 1 | Admin UI + Product Import | 🔄 In Progress |
+| 2 | Inventory Sync | ⬚ Not Started |
+| 3 | Order Routing | ⬚ Not Started |
+
+---
+
 ## What Needs to Be Built
+
+### Phase 0: Dev Environment Setup ✅
+
+**What**: Set up a separate development environment for safe iteration.
+
+**Why first**: Avoid breaking production while developing new features.
+
+**What was done**:
+- Created `dev` branch for development work
+- Created separate Vercel project for dev deployments
+- Created `shopify.app.dev.toml` with dev app config (client_id: `19bafcd457f52181a12054b310728aaf`)
+- Deployed config to dev app via `shopify app deploy --config shopify.app.dev.toml`
+- Set Vercel env vars (SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_APP_URL, DATABASE_URL)
+- Installed dev app on development store
+- Verified app loads correctly
+
+**End state**: Safe dev environment for iteration without affecting production.
+
+---
 
 ### Phase 1: Admin UI + Product Import
 
@@ -128,8 +158,6 @@ When you open a new Claude terminal to continue work:
 
 ## Current Status
 
-**Next up**: Phase 1 - Admin UI + Product Import
+**Currently working on**: Phase 1 - Admin UI + Product Import
 
-**Blockers to address**:
-- Need to add `write_products` scope to `shopify.app.toml`
-- Need to verify the app can write to your store (not just read)
+See **Progress Tracker** above for overall status.
