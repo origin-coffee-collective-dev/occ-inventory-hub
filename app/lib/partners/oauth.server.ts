@@ -82,7 +82,6 @@ export function generateInstallUrl(shop: string, redirectUri: string): string {
     scope: SCOPES,
     redirect_uri: redirectUri,
     state,
-    "grant_options[]": "offline",
   });
 
   return `https://${shop}/admin/oauth/authorize?${params.toString()}`;
