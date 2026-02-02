@@ -1,13 +1,13 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { json } from "react-router";
+import { useLoaderData } from "react-router";
 import { authenticate } from "~/shopify.server";
 import { getAllPartners } from "~/lib/supabase.server";
 
 /**
  * TEST ENDPOINT - Remove after verifying partner tokens work
  *
- * Tests that partner access tokens can make API calls to their stores.
- * Visit /app/test/partner-token to run the test.
+ * Fetches products from partner stores to verify tokens work.
+ * Visit /app/test/partner-token to see results.
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Ensure user is authenticated
@@ -16,11 +16,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { data: partners, error: partnersError } = await getAllPartners();
 
   if (partnersError) {
-    return json({ error: `Failed to fetch partners: ${partnersError}` }, { status: 500 });
+    return { error: `Failed to fetch partners: ${partnersError}`, partners: [], results: [] };
   }
 
   if (partners.length === 0) {
-    return json({ message: "No partners found. Connect a partner first." });
+    return { message: "No partners found. Connect a partner first.", partners: [], results: [] };
   }
 
   const results = [];
@@ -30,7 +30,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       results.push({
         shop: partner.shop,
         status: "no_token",
-        message: "Partner has no access token",
+        tokenInfo: null,
+        products: [],
+        error: "Partner has no access token",
       });
       continue;
     }
@@ -39,10 +41,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const tokenPrefix = partner.access_token.substring(0, 5);
     const tokenType = tokenPrefix === "shpat" ? "offline" : tokenPrefix === "shpua" ? "online" : "unknown";
 
-    // Test API call - fetch shop info
+    // Fetch products from partner store
     try {
       const response = await fetch(
-        `https://${partner.shop}/admin/api/2025-01/shop.json`,
+        `https://${partner.shop}/admin/api/2025-01/products.json?limit=10`,
         {
           headers: {
             "X-Shopify-Access-Token": partner.access_token,
@@ -56,53 +58,119 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         results.push({
           shop: partner.shop,
           status: "api_error",
-          tokenPrefix,
-          tokenType,
-          httpStatus: response.status,
-          error: errorText,
+          tokenInfo: { prefix: tokenPrefix, type: tokenType },
+          products: [],
+          error: `HTTP ${response.status}: ${errorText}`,
         });
         continue;
       }
 
       const data = await response.json();
+      const products = data.products?.map((p: { id: number; title: string; variants: { id: number; price: string; sku: string }[] }) => ({
+        id: p.id,
+        title: p.title,
+        variantCount: p.variants?.length || 0,
+        firstVariantPrice: p.variants?.[0]?.price,
+        firstVariantSku: p.variants?.[0]?.sku,
+      })) || [];
+
       results.push({
         shop: partner.shop,
         status: "success",
-        tokenPrefix,
-        tokenType,
-        shopName: data.shop?.name,
-        shopEmail: data.shop?.email,
+        tokenInfo: { prefix: tokenPrefix, type: tokenType },
+        products,
+        error: null,
       });
     } catch (err) {
       results.push({
         shop: partner.shop,
         status: "network_error",
-        tokenPrefix,
-        tokenType,
+        tokenInfo: { prefix: tokenPrefix, type: tokenType },
+        products: [],
         error: err instanceof Error ? err.message : "Unknown error",
       });
     }
   }
 
-  return json({
-    message: "Partner token test results",
-    results,
-    summary: {
-      total: partners.length,
-      offline: results.filter(r => r.tokenType === "offline").length,
-      online: results.filter(r => r.tokenType === "online").length,
-      success: results.filter(r => r.status === "success").length,
-      failed: results.filter(r => r.status !== "success").length,
-    },
-  });
+  return { partners, results };
 };
 
 export default function TestPartnerToken() {
+  const data = useLoaderData<typeof loader>();
+
+  if ("error" in data && data.error) {
+    return (
+      <s-page heading="Partner Token Test">
+        <s-section>
+          <s-banner tone="critical">{data.error}</s-banner>
+        </s-section>
+      </s-page>
+    );
+  }
+
+  if ("message" in data && data.message) {
+    return (
+      <s-page heading="Partner Token Test">
+        <s-section>
+          <s-banner tone="warning">{data.message}</s-banner>
+        </s-section>
+      </s-page>
+    );
+  }
+
   return (
-    <div style={{ padding: "20px", fontFamily: "monospace" }}>
-      <h1>Partner Token Test</h1>
-      <p>This page tests partner access tokens. Check the network response or visit this URL directly to see JSON results.</p>
-      <p><strong>Note:</strong> Remove this test endpoint after verification.</p>
-    </div>
+    <s-page heading="Partner Token Test">
+      <s-section heading="Connected Partners">
+        <s-banner tone="warning">
+          This is a test endpoint. Remove after verification.
+        </s-banner>
+      </s-section>
+
+      {data.results?.map((result) => (
+        <s-section key={result.shop} heading={result.shop}>
+          <s-stack direction="block" gap="base">
+            <s-box padding="base" borderWidth="base" borderRadius="base">
+              <s-stack direction="block" gap="tight">
+                <s-text>
+                  <strong>Status:</strong> {result.status}
+                </s-text>
+                {result.tokenInfo && (
+                  <>
+                    <s-text>
+                      <strong>Token Prefix:</strong> {result.tokenInfo.prefix}
+                    </s-text>
+                    <s-text>
+                      <strong>Token Type:</strong>{" "}
+                      <span style={{ color: result.tokenInfo.type === "offline" ? "green" : "red" }}>
+                        {result.tokenInfo.type}
+                      </span>
+                    </s-text>
+                  </>
+                )}
+                {result.error && (
+                  <s-text>
+                    <strong>Error:</strong> {result.error}
+                  </s-text>
+                )}
+              </s-stack>
+            </s-box>
+
+            {result.products.length > 0 && (
+              <s-box padding="base" borderWidth="base" borderRadius="base">
+                <s-heading>Products ({result.products.length})</s-heading>
+                <s-stack direction="block" gap="tight">
+                  {result.products.map((product) => (
+                    <s-text key={product.id}>
+                      • {product.title} - ${product.firstVariantPrice} ({product.variantCount} variants)
+                      {product.firstVariantSku && ` [SKU: ${product.firstVariantSku}]`}
+                    </s-text>
+                  ))}
+                </s-stack>
+              </s-box>
+            )}
+          </s-stack>
+        </s-section>
+      ))}
+    </s-page>
   );
 }
