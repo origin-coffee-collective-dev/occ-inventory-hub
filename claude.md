@@ -4,19 +4,31 @@
 
 This is a **B2B dropshipping/inventory hub** Shopify embedded app that connects a primary retail store with multiple supplier (partner) stores. The app enables automated product imports with margin markup, inventory synchronization, and order routing.
 
+### Business Context: Online Coffee Company
+
+**OCC (Online Coffee Company)** is an online coffee business with the following model:
+- You run the customer-facing retail storefront
+- Partner wholesalers/coffee roasters have their own Shopify stores with coffee products
+- Products are imported to your retail store with configurable margin markup
+- Customers purchase from your store
+- **Daily order processing**: At end of day (via cron job), orders are batched and sent to partner wholesalers
+- **Fulfillment flow**: Partners roast fresh coffee and ship to YOUR fulfillment center (not direct to customer)
+- You then ship to customers from your fulfillment center (typically weekly or as scheduled)
+
 ### Business Problem Solved
 
-- Retail storefront doesn't hold inventory
-- Partner stores (suppliers/wholesalers) have their own Shopify stores with products
-- Products are imported to the retail store with configurable markup pricing
-- When customers buy, orders are routed to partners who ship to your fulfillment center
+- Retail storefront doesn't hold inventory - partners hold it
+- Partner stores (coffee roasters/wholesalers) have their own Shopify stores with products
+- Products are imported to the retail store with configurable markup pricing (default 30% margin)
+- When customers buy, orders are batched and routed to partners who ship to your fulfillment center
+- Fresh roasting happens on-demand based on actual orders
 
 ### Core Workflows
 
 1. **Partner Connection** - Partners authorize via OAuth, credentials stored for API access
 2. **Product Import** - Pull products from partners, create copies with margin-adjusted pricing
-3. **Inventory Mirroring** - Periodic sync of inventory levels from partners
-4. **Order Routing** - Detect partner items via SKU prefix, create orders on partner stores (partners ship to your fulfillment center, not directly to customers)
+3. **Inventory Mirroring** - Periodic sync of inventory levels from partners (every 15-30 min)
+4. **Order Routing** - Detect partner items via SKU prefix, batch orders daily, create orders on partner stores (partners ship to your fulfillment center)
 
 ---
 

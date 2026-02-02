@@ -1,8 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+# DEV APP CONFIGURATION
 
-client_id = "3309c2c1d9b6aa4f3fd418b21b6b47a7"
-name = "occ-inventory-hub"
-application_url = "https://occ-inventory-hub.vercel.app"
+client_id = "19bafcd457f52181a12054b310728aaf"
+name = "occ-inventory-hub-dev"
+application_url = "https://occ-inventory-hub-dev.vercel.app"
 embedded = true
 
 [build]
@@ -32,7 +33,7 @@ direct_api_mode = "offline"
 
 [auth]
 redirect_urls = [
-  "https://occ-inventory-hub.vercel.app/auth/callback",
-  "https://occ-inventory-hub.vercel.app/auth/shopify/callback",
-  "https://occ-inventory-hub.vercel.app/partner/callback"
+  "https://occ-inventory-hub-dev.vercel.app/auth/callback",
+  "https://occ-inventory-hub-dev.vercel.app/auth/shopify/callback",
+  "https://occ-inventory-hub-dev.vercel.app/partner/callback"
 ]

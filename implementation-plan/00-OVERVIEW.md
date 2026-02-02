@@ -1,0 +1,135 @@
+# OCC Inventory Hub - Development Roadmap
+
+> High-level overview of what needs to be built and how.
+> Detailed implementation plans live in separate phase files.
+
+---
+
+## Business Model Summary
+
+**You**: Run the retail Shopify store (customers buy here)
+**Partners**: Coffee roasters/wholesalers with their own Shopify stores
+**Flow**: Import partner products → Customers buy → Daily order batch to partners → Partners ship to your fulfillment center → You ship to customers
+
+---
+
+## What's Already Working
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Partner OAuth | Done | Partners can authorize via link, tokens stored |
+| Read Partner Products | Done | API endpoint fetches products from partner stores |
+| Database Schema | Done | Partners, product mappings, orders, sync logs |
+| Price/SKU Utilities | Done | Margin calculation, partner SKU format |
+| GDPR Compliance | Done | Webhooks handle data requests/deletion |
+
+---
+
+## What Needs to Be Built
+
+### Phase 1: Admin UI + Product Import
+
+**What**: Build the UI to browse partners/products and import selected products to your store.
+
+**Why first**: You need to see what's in partner stores and get products into your store before anything else can happen.
+
+**High-level how**:
+- Build admin dashboard pages using Shopify Polaris components
+- Partner list page → shows connected partners
+- Partner products page → browse their products, select ones to import
+- Import action → reads from partner, creates on your store with markup pricing
+- Store mapping in database (links partner variant to your variant)
+
+**The connection**: Your app has two sets of credentials:
+1. Your store's session (from app install) → write products to YOUR store
+2. Partner's access token (from their OAuth) → read products from THEIR store
+
+**End state**: You can view partners, browse their products, and import selected ones to your store.
+
+---
+
+### Phase 2: Inventory Sync
+
+**What**: Keep your store's inventory levels in sync with partner inventory.
+
+**Why**: When partner's stock changes, your store should reflect that (prevent overselling).
+
+**High-level how**:
+- Scheduled cron job runs **hourly**
+- For each imported product mapping, fetch current inventory from partner
+- Update inventory on your store to match
+- Optional: "Sync Now" button in admin UI for manual trigger
+- Log sync results
+
+**Scale assumptions**: 7-30 partners, 20-50 products each (~200-900 products total). Well within API rate limits.
+
+**Depends on**: Phase 1 (need imported products with mappings first)
+
+**End state**: Your inventory automatically stays in sync with partner inventory.
+
+---
+
+### Phase 3: Order Routing
+
+**What**: When customers order, batch those orders and send to partners.
+
+**Why**: Partners need to know what to roast and ship to your fulfillment center.
+
+**High-level how**:
+- Listen for orders on your store (webhook or query)
+- Detect partner items by SKU prefix (e.g., `PARTNER-roastery-BLEND01`)
+- Batch orders by partner
+- Create/update orders on partner stores with YOUR fulfillment center as shipping address
+- Track order status in database
+
+**Key design decision: Order cadence**
+
+| Approach | Description | Pros | Cons |
+|----------|-------------|------|------|
+| Daily orders | Create new order per partner each day | Simpler to implement | Up to 7 orders/week per partner |
+| Weekly master order | Append to one pending order until partner's cutoff | 1 order/week, easier for partners | More complex logic |
+
+**Leaning toward: Weekly master order**
+- Each partner has a weekly order cutoff date
+- Daily cron checks for pending order → if exists, add line items; if not, create new
+- Results in ONE order per partner per week
+- One tracking number, easier shipping consolidation
+- Less friction for partners = healthier business relationships
+
+*Final decision to be made when implementing Phase 3.*
+
+**Depends on**: Phase 1 & 2 (need products imported and inventory synced)
+
+**End state**: Orders automatically flow to partners with minimal friction.
+
+---
+
+## Folder Structure
+
+```
+implementation-plan/
+├── 00-OVERVIEW.md           ← This file (high-level overview)
+├── 01-PRODUCT-IMPORT.md     ← Phase 1 detailed plan (when ready)
+├── 02-INVENTORY-SYNC.md     ← Phase 2 detailed plan (when ready)
+└── 03-ORDER-ROUTING.md      ← Phase 3 detailed plan (when ready)
+```
+
+---
+
+## Starting a New Session
+
+When you open a new Claude terminal to continue work:
+
+1. Tell Claude: "Read implementation-plan/00-OVERVIEW.md"
+2. State which phase: "I'm working on Phase 1"
+3. Claude will read/create the detailed phase file and continue from there
+
+---
+
+## Current Status
+
+**Next up**: Phase 1 - Admin UI + Product Import
+
+**Blockers to address**:
+- Need to add `write_products` scope to `shopify.app.toml`
+- Need to verify the app can write to your store (not just read)
