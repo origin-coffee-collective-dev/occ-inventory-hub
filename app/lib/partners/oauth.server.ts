@@ -115,10 +115,17 @@ export async function exchangeCodeForToken(
       return { error: `Token exchange failed: ${response.status}` };
     }
 
-    const data = (await response.json()) as {
-      access_token: string;
-      scope: string;
-    };
+    const data = await response.json();
+
+    // Log full response to diagnose token type
+    console.log(`Token exchange response for ${shop}:`, JSON.stringify(data, null, 2));
+
+    // Check if this is an online token (has associated_user)
+    if (data.associated_user) {
+      console.warn(`WARNING: Received ONLINE token for ${shop} - has associated_user`);
+    } else {
+      console.log(`Received OFFLINE token for ${shop} - no associated_user`);
+    }
 
     return {
       accessToken: data.access_token,
