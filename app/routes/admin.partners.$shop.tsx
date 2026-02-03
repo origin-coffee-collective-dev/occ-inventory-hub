@@ -84,8 +84,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     } satisfies LoaderData);
   }
 
-  // Fetch cached products
-  const { data: cachedProducts } = await getPartnerProducts(partnerShop);
+  // Fetch cached products (including soft-deleted ones for the Unavailable tab)
+  const { data: cachedProducts } = await getPartnerProducts(partnerShop, true);
 
   // Fetch product mappings to determine which are already imported
   const { data: mappings } = await getProductMappingsByShop(partnerShop);
@@ -558,6 +558,9 @@ export default function AdminPartnerProducts() {
   const navigation = useNavigation();
   const submit = useSubmit();
 
+  // Track active tab
+  const [activeTab, setActiveTab] = useState<"imported" | "available" | "unavailable">("imported");
+
   // Track price inputs for each product
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
 
@@ -645,8 +648,10 @@ export default function AdminPartnerProducts() {
     }
   }, [actionData]);
 
-  const notImportedProducts = products.filter(p => !p.isImported);
-  const importedProducts = products.filter(p => p.isImported);
+  // Filter products into three groups for tabs
+  const importedProducts = products.filter(p => p.isImported && !p.is_deleted);
+  const availableProducts = products.filter(p => !p.isImported && !p.is_deleted);
+  const unavailableProducts = products.filter(p => p.is_deleted);
 
   return (
     <div>
@@ -724,6 +729,61 @@ export default function AdminPartnerProducts() {
       {/* Toast notifications */}
       <Toaster position="top-right" />
 
+      {/* Tab Navigation */}
+      {products.length > 0 && (
+        <div style={{
+          display: "flex",
+          gap: "0.5rem",
+          marginBottom: "1rem",
+        }}>
+          <button
+            onClick={() => setActiveTab("imported")}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: activeTab === "imported" ? "#1a1a1a" : "#f3f4f6",
+              color: activeTab === "imported" ? "white" : "#374151",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+            }}
+          >
+            Imported ({importedProducts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("available")}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: activeTab === "available" ? "#1a1a1a" : "#f3f4f6",
+              color: activeTab === "available" ? "white" : "#374151",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+            }}
+          >
+            Available ({availableProducts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("unavailable")}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: activeTab === "unavailable" ? "#1a1a1a" : "#f3f4f6",
+              color: activeTab === "unavailable" ? "white" : "#374151",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+            }}
+          >
+            Unavailable ({unavailableProducts.length})
+          </button>
+        </div>
+      )}
+
       {/* Empty State */}
       {!error && products.length === 0 && (
         <div style={{
@@ -751,20 +811,16 @@ export default function AdminPartnerProducts() {
         </div>
       )}
 
-      {/* Available Products (not imported) */}
-      {notImportedProducts.length > 0 && (
+      {/* Available Products Tab */}
+      {activeTab === "available" && availableProducts.length > 0 && (
         <div style={{
           backgroundColor: "white",
           padding: "1.5rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          marginBottom: "1.5rem",
         }}>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem" }}>
-            Available Products ({notImportedProducts.length})
-          </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {notImportedProducts.map(product => (
+            {availableProducts.map(product => (
               <div
                 key={product.id}
                 onClick={() => handleProductClick(product)}
@@ -903,17 +959,14 @@ export default function AdminPartnerProducts() {
         </div>
       )}
 
-      {/* Already Imported Products */}
-      {importedProducts.length > 0 && (
+      {/* Imported Products Tab */}
+      {activeTab === "imported" && importedProducts.length > 0 && (
         <div style={{
           backgroundColor: "white",
           padding: "1.5rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
         }}>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem" }}>
-            Imported Products ({importedProducts.length})
-          </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {importedProducts.map(product => (
               <div
@@ -1025,6 +1078,130 @@ export default function AdminPartnerProducts() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Unavailable Products Tab (soft-deleted) */}
+      {activeTab === "unavailable" && unavailableProducts.length > 0 && (
+        <div style={{
+          backgroundColor: "white",
+          padding: "1.5rem",
+          borderRadius: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        }}>
+          <p style={{ fontSize: "0.875rem", color: "#666", marginBottom: "1rem" }}>
+            These products are no longer available from the partner store. They may have been deleted or unpublished.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {unavailableProducts.map(product => (
+              <div
+                key={product.id}
+                style={{
+                  padding: "1rem",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1rem",
+                  opacity: 0.7,
+                }}
+              >
+                {/* Product Image */}
+                <div style={{
+                  width: "48px",
+                  height: "48px",
+                  flexShrink: 0,
+                  backgroundColor: "#f3f4f6",
+                  borderRadius: "4px",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  {product.image_url ? (
+                    <img
+                      src={product.image_url}
+                      alt={product.title}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        filter: "grayscale(50%)",
+                      }}
+                    />
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                  )}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>
+                    {product.title}
+                  </div>
+                  <div style={{ fontSize: "0.875rem", color: "#666" }}>
+                    Last Price: ${product.price.toFixed(2)}
+                    {product.sku && ` | SKU: ${product.sku}`}
+                  </div>
+                </div>
+                <span style={{
+                  backgroundColor: "#fef2f2",
+                  color: "#dc2626",
+                  padding: "0.25rem 0.75rem",
+                  borderRadius: "9999px",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                }}>
+                  Unavailable
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty States for Each Tab */}
+      {activeTab === "imported" && importedProducts.length === 0 && products.length > 0 && (
+        <div style={{
+          backgroundColor: "white",
+          padding: "2rem",
+          borderRadius: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          textAlign: "center",
+        }}>
+          <p style={{ color: "#666", margin: 0 }}>
+            No products imported yet. Check the Available tab to import products.
+          </p>
+        </div>
+      )}
+
+      {activeTab === "available" && availableProducts.length === 0 && products.length > 0 && (
+        <div style={{
+          backgroundColor: "white",
+          padding: "2rem",
+          borderRadius: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          textAlign: "center",
+        }}>
+          <p style={{ color: "#666", margin: 0 }}>
+            All products have been imported or are unavailable.
+          </p>
+        </div>
+      )}
+
+      {activeTab === "unavailable" && unavailableProducts.length === 0 && products.length > 0 && (
+        <div style={{
+          backgroundColor: "white",
+          padding: "2rem",
+          borderRadius: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          textAlign: "center",
+        }}>
+          <p style={{ color: "#666", margin: 0 }}>
+            No unavailable products. All partner products are currently accessible.
+          </p>
         </div>
       )}
 
