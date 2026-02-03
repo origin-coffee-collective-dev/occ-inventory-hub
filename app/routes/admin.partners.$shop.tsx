@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useNavigation, useSubmit, useActionData, Link } from "react-router";
 import { useState, useEffect } from "react";
+import toast, { Toaster } from "react-hot-toast";
 import {
   getPartnerByShop,
   getPartnerProducts,
@@ -8,11 +9,18 @@ import {
   getProductMappingsByShop,
   createProductMapping,
   markPartnerProductSeen,
+  unlinkProductMapping,
   type PartnerProductRecord,
 } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken } from "~/lib/ownerStore.server";
 import { PRODUCTS_QUERY, type ProductsQueryResult } from "~/lib/shopify/queries/products";
 import { PRODUCT_SET_MUTATION, buildProductSetInput, type ProductSetResult } from "~/lib/shopify/mutations/products";
+import {
+  INVENTORY_ITEM_UPDATE,
+  INVENTORY_SET_QUANTITIES,
+  type InventoryItemUpdateResult,
+  type InventorySetQuantitiesResult,
+} from "~/lib/shopify/mutations/inventory";
 import { calculateMargin, formatPrice } from "~/lib/utils/price";
 import { generatePartnerSku } from "~/lib/utils/sku";
 
@@ -166,12 +174,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         sku: string | null;
         price: number;
         inventory_quantity: number | null;
+        image_url: string | null;
       }> = [];
 
       for (const edge of result.data.products.edges) {
         const product = edge.node;
+        // Get the product's featured image URL
+        const productImageUrl = product.featuredImage?.url || null;
+
         for (const variantEdge of product.variants.edges) {
           const variant = variantEdge.node;
+          // Use variant-specific image if available, otherwise fall back to product image
+          const imageUrl = variant.image?.url || productImageUrl;
+
           productsToCache.push({
             partner_shop: partnerShop,
             partner_product_id: product.id,
@@ -182,11 +197,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             sku: variant.sku,
             price: parseFloat(variant.price),
             inventory_quantity: variant.inventoryQuantity,
+            image_url: imageUrl,
           });
         }
       }
 
-      const { newCount, updatedCount, error: upsertError } = await upsertPartnerProducts(productsToCache);
+      const { newCount, updatedCount, deletedCount, restoredCount, error: upsertError } = await upsertPartnerProducts(productsToCache);
 
       if (upsertError) {
         return Response.json({
@@ -196,10 +212,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         } satisfies ActionData);
       }
 
+      // Build a descriptive message
+      const parts = [];
+      if (newCount > 0) parts.push(`${newCount} new`);
+      if (updatedCount > 0) parts.push(`${updatedCount} updated`);
+      if (deletedCount > 0) parts.push(`${deletedCount} removed`);
+      if (restoredCount > 0) parts.push(`${restoredCount} restored`);
+      const details = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+
       return Response.json({
         success: true,
         intent,
-        message: `Synced ${productsToCache.length} products (${newCount} new, ${updatedCount} updated)`,
+        message: `Synced ${productsToCache.length} products${details}`,
         newCount,
         updatedCount,
       } satisfies ActionData);
@@ -267,6 +291,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         sku: mySku,
         price: formatPrice(myPrice),
         status: 'ACTIVE',
+        imageUrl: cachedProduct.image_url || undefined,
       });
 
       const response = await fetch(
@@ -325,6 +350,80 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         } satisfies ActionData);
       }
 
+      // Setup inventory tracking
+      const inventoryItemId = createdVariant.inventoryItem?.id;
+      const locationId = tokenResult.locationId;
+      const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
+
+      if (inventoryItemId && locationId) {
+        // Step 1: Enable inventory tracking
+        const trackingResponse = await fetch(
+          `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Access-Token': occStoreToken,
+            },
+            body: JSON.stringify({
+              query: INVENTORY_ITEM_UPDATE,
+              variables: {
+                id: inventoryItemId,
+                input: { tracked: true },
+              },
+            }),
+          }
+        );
+
+        if (trackingResponse.ok) {
+          const trackingResult = await trackingResponse.json() as { data: InventoryItemUpdateResult };
+          if (trackingResult.data.inventoryItemUpdate.userErrors.length > 0) {
+            console.error("Inventory tracking error:", trackingResult.data.inventoryItemUpdate.userErrors);
+          }
+
+          // Step 2: Set initial inventory quantity
+          const quantityResponse = await fetch(
+            `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': occStoreToken,
+              },
+              body: JSON.stringify({
+                query: INVENTORY_SET_QUANTITIES,
+                variables: {
+                  input: {
+                    name: "available",
+                    reason: "correction",
+                    quantities: [
+                      {
+                        inventoryItemId,
+                        locationId,
+                        quantity: partnerInventoryQty,
+                      },
+                    ],
+                  },
+                },
+              }),
+            }
+          );
+
+          if (quantityResponse.ok) {
+            const quantityResult = await quantityResponse.json() as { data: InventorySetQuantitiesResult };
+            if (quantityResult.data.inventorySetQuantities.userErrors.length > 0) {
+              console.error("Inventory quantity error:", quantityResult.data.inventorySetQuantities.userErrors);
+            }
+          } else {
+            console.error("Failed to set inventory quantity:", await quantityResponse.text());
+          }
+        } else {
+          console.error("Failed to enable inventory tracking:", await trackingResponse.text());
+        }
+      } else {
+        console.warn("Skipping inventory setup: missing inventoryItemId or locationId");
+      }
+
       // Create product mapping
       const { error: mappingError } = await createProductMapping({
         partnerId: partner.id,
@@ -363,6 +462,35 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
+  // UNLINK: Remove the product mapping (mark as no longer imported)
+  if (intent === "unlink") {
+    const partnerVariantId = formData.get("partnerVariantId") as string;
+
+    if (!partnerVariantId) {
+      return Response.json({
+        success: false,
+        intent,
+        error: "Missing variant ID",
+      } satisfies ActionData);
+    }
+
+    const { error: unlinkError } = await unlinkProductMapping(partnerShop, partnerVariantId);
+
+    if (unlinkError) {
+      return Response.json({
+        success: false,
+        intent,
+        error: unlinkError,
+      } satisfies ActionData);
+    }
+
+    return Response.json({
+      success: true,
+      intent,
+      message: "Product unlinked successfully",
+    } satisfies ActionData);
+  }
+
   return Response.json({ success: false, intent, error: "Unknown action" } satisfies ActionData);
 };
 
@@ -374,6 +502,9 @@ export default function AdminPartnerProducts() {
 
   // Track price inputs for each product
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+
+  // Track which product is being removed (for confirmation modal)
+  const [removeProduct, setRemoveProduct] = useState<{ variantId: string; title: string } | null>(null);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
@@ -413,10 +544,27 @@ export default function AdminPartnerProducts() {
     setPriceInputs(prev => ({ ...prev, [variantId]: value }));
   };
 
-  // Show feedback toast effect
+  const handleRemoveClick = (variantId: string, title: string) => {
+    setRemoveProduct({ variantId, title });
+  };
+
+  const handleRemoveConfirm = () => {
+    if (removeProduct) {
+      submit({ intent: "unlink", partnerVariantId: removeProduct.variantId }, { method: "post" });
+      setRemoveProduct(null);
+    }
+  };
+
+  const handleRemoveCancel = () => {
+    setRemoveProduct(null);
+  };
+
+  // Show toast when action completes
   useEffect(() => {
-    if (actionData?.message) {
-      console.log(actionData.message);
+    if (actionData?.success && actionData?.message) {
+      toast.success(actionData.message);
+    } else if (!actionData?.success && actionData?.error) {
+      toast.error(actionData.error);
     }
   }, [actionData]);
 
@@ -496,19 +644,8 @@ export default function AdminPartnerProducts() {
         </div>
       )}
 
-      {/* Action Feedback */}
-      {actionData && (
-        <div style={{
-          backgroundColor: actionData.success ? "#dcfce7" : "#fef2f2",
-          border: `1px solid ${actionData.success ? "#86efac" : "#fecaca"}`,
-          color: actionData.success ? "#16a34a" : "#dc2626",
-          padding: "1rem",
-          borderRadius: "4px",
-          marginBottom: "1rem",
-        }}>
-          {actionData.message || actionData.error}
-        </div>
-      )}
+      {/* Toast notifications */}
+      <Toaster position="top-right" />
 
       {/* Empty State */}
       {!error && products.length === 0 && (
@@ -559,7 +696,37 @@ export default function AdminPartnerProducts() {
                   borderRadius: "4px",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
+                  {/* Product Image */}
+                  <div style={{
+                    width: "64px",
+                    height: "64px",
+                    flexShrink: 0,
+                    backgroundColor: "#f3f4f6",
+                    borderRadius: "4px",
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.title}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    )}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
                       {product.is_new && (
@@ -653,26 +820,136 @@ export default function AdminPartnerProducts() {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  gap: "1rem",
                 }}
               >
-                <div>
+                {/* Product Image */}
+                <div style={{
+                  width: "48px",
+                  height: "48px",
+                  flexShrink: 0,
+                  backgroundColor: "#f3f4f6",
+                  borderRadius: "4px",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  {product.image_url ? (
+                    <img
+                      src={product.image_url}
+                      alt={product.title}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                  )}
+                </div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>{product.title}</div>
                   <div style={{ fontSize: "0.875rem", color: "#666" }}>
                     Partner: ${product.price.toFixed(2)} &rarr; Your Store: ${product.myPrice?.toFixed(2)}
                   </div>
                 </div>
-                <span style={{
-                  backgroundColor: "#dcfce7",
-                  color: "#16a34a",
-                  padding: "0.25rem 0.75rem",
-                  borderRadius: "9999px",
-                  fontSize: "0.75rem",
-                  fontWeight: 500,
-                }}>
-                  Imported
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span style={{
+                    backgroundColor: "#dcfce7",
+                    color: "#16a34a",
+                    padding: "0.25rem 0.75rem",
+                    borderRadius: "9999px",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                  }}>
+                    Imported
+                  </span>
+                  <button
+                    onClick={() => handleRemoveClick(product.partner_variant_id, product.title)}
+                    disabled={isLoading}
+                    style={{
+                      padding: "0.25rem 0.5rem",
+                      backgroundColor: "transparent",
+                      color: "#dc2626",
+                      border: "1px solid #fecaca",
+                      borderRadius: "4px",
+                      cursor: isLoading ? "not-allowed" : "pointer",
+                      fontSize: "0.75rem",
+                    }}
+                    title="Remove this product from imported list"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Remove Confirmation Modal */}
+      {removeProduct && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 50,
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            padding: "1.5rem",
+            maxWidth: "400px",
+            width: "90%",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+          }}>
+            <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.125rem", fontWeight: 600 }}>
+              Remove Product
+            </h3>
+            <p style={{ margin: "0 0 1.5rem", color: "#666", fontSize: "0.875rem" }}>
+              Are you sure you want to remove <strong>{removeProduct.title}</strong> from your imported products?
+              It will appear as available for import again.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+              <button
+                onClick={handleRemoveCancel}
+                style={{
+                  padding: "0.5rem 1rem",
+                  backgroundColor: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "0.875rem",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemoveConfirm}
+                disabled={isLoading}
+                style={{
+                  padding: "0.5rem 1rem",
+                  backgroundColor: "#dc2626",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  fontSize: "0.875rem",
+                }}
+              >
+                {isLoading ? "Removing..." : "Remove"}
+              </button>
+            </div>
           </div>
         </div>
       )}

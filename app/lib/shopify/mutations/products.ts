@@ -17,6 +17,18 @@ export const PRODUCT_SET_MUTATION = `
               title
               sku
               price
+              inventoryItem {
+                id
+              }
+            }
+          }
+        }
+        media(first: 1) {
+          edges {
+            node {
+              ... on MediaImage {
+                id
+              }
             }
           }
         }
@@ -49,6 +61,11 @@ export interface ProductSetInput {
     name: string;
     values: Array<{ name: string }>;
   }>;
+  media?: Array<{
+    originalSource: string;
+    mediaContentType: 'IMAGE' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'MODEL_3D';
+    alt?: string;
+  }>;
 }
 
 export interface ProductSetResult {
@@ -65,6 +82,16 @@ export interface ProductSetResult {
             title: string;
             sku: string | null;
             price: string;
+            inventoryItem: {
+              id: string;
+            };
+          };
+        }>;
+      };
+      media: {
+        edges: Array<{
+          node: {
+            id: string;
           };
         }>;
       };
@@ -90,8 +117,9 @@ export function buildProductSetInput(params: {
   price: string;
   barcode?: string;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED';
+  imageUrl?: string;
 }): ProductSetInput {
-  return {
+  const input: ProductSetInput = {
     title: params.title,
     descriptionHtml: params.descriptionHtml,
     vendor: params.vendor,
@@ -119,4 +147,16 @@ export function buildProductSetInput(params: {
       },
     ],
   };
+
+  // Add media if image URL is provided
+  if (params.imageUrl) {
+    input.media = [
+      {
+        originalSource: params.imageUrl,
+        mediaContentType: 'IMAGE',
+      },
+    ];
+  }
+
+  return input;
 }

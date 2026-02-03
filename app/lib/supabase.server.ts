@@ -554,23 +554,35 @@ export interface PartnerProductRecord {
   sku: string | null;
   price: number;
   inventory_quantity: number | null;
+  image_url: string | null;
   is_new: boolean;
+  is_deleted: boolean;
+  deleted_at: string | null;
   first_seen_at: string;
   last_synced_at: string;
 }
 
 // Get all cached partner products for a shop
-export async function getPartnerProducts(shopDomain: string): Promise<{
+export async function getPartnerProducts(
+  shopDomain: string,
+  includeDeleted: boolean = false
+): Promise<{
   data: PartnerProductRecord[];
   error: string | null;
 }> {
   try {
     const client = getSupabaseClient();
-    const { data, error } = await client
+    let query = client
       .from('partner_products')
       .select('*')
-      .eq('partner_shop', shopDomain)
-      .order('title');
+      .eq('partner_shop', shopDomain);
+
+    // Filter out deleted products by default
+    if (!includeDeleted) {
+      query = query.eq('is_deleted', false);
+    }
+
+    const { data, error } = await query.order('title');
 
     if (error) {
       return { data: [], error: error.message };
@@ -592,36 +604,47 @@ export async function upsertPartnerProducts(
     sku: string | null;
     price: number;
     inventory_quantity: number | null;
+    image_url?: string | null;
   }>
 ): Promise<{
   newCount: number;
   updatedCount: number;
+  deletedCount: number;
+  restoredCount: number;
   error: string | null;
 }> {
   try {
     if (products.length === 0) {
-      return { newCount: 0, updatedCount: 0, error: null };
+      return { newCount: 0, updatedCount: 0, deletedCount: 0, restoredCount: 0, error: null };
     }
 
     const client = getSupabaseClient();
     const shopDomain = products[0].partner_shop;
 
-    // Get existing products to determine which are new
+    // Get existing products (including deleted) to determine which are new/updated/restored
     const { data: existing } = await client
       .from('partner_products')
-      .select('partner_variant_id')
+      .select('partner_variant_id, is_deleted')
       .eq('partner_shop', shopDomain);
 
-    const existingVariantIds = new Set((existing || []).map(p => p.partner_variant_id));
+    const existingVariantIds = new Map(
+      (existing || []).map(p => [p.partner_variant_id, p.is_deleted])
+    );
+
+    // Track which variant IDs we're syncing (to detect deletions)
+    const syncedVariantIds = new Set(products.map(p => p.partner_variant_id));
 
     let newCount = 0;
     let updatedCount = 0;
+    let restoredCount = 0;
 
     for (const product of products) {
-      const isExisting = existingVariantIds.has(product.partner_variant_id);
+      const existingRecord = existingVariantIds.get(product.partner_variant_id);
+      const isExisting = existingRecord !== undefined;
+      const wasDeleted = existingRecord === true;
 
       if (isExisting) {
-        // Update existing product
+        // Update existing product (and restore if it was deleted)
         const { error } = await client
           .from('partner_products')
           .update({
@@ -629,12 +652,21 @@ export async function upsertPartnerProducts(
             sku: product.sku,
             price: product.price,
             inventory_quantity: product.inventory_quantity,
+            image_url: product.image_url ?? null,
+            is_deleted: false,
+            deleted_at: null,
             last_synced_at: new Date().toISOString(),
           })
           .eq('partner_shop', product.partner_shop)
           .eq('partner_variant_id', product.partner_variant_id);
 
-        if (!error) updatedCount++;
+        if (!error) {
+          if (wasDeleted) {
+            restoredCount++;
+          } else {
+            updatedCount++;
+          }
+        }
       } else {
         // Insert new product
         const { error } = await client
@@ -647,7 +679,9 @@ export async function upsertPartnerProducts(
             sku: product.sku,
             price: product.price,
             inventory_quantity: product.inventory_quantity,
+            image_url: product.image_url ?? null,
             is_new: true,
+            is_deleted: false,
             first_seen_at: new Date().toISOString(),
             last_synced_at: new Date().toISOString(),
           });
@@ -656,9 +690,26 @@ export async function upsertPartnerProducts(
       }
     }
 
-    return { newCount, updatedCount, error: null };
+    // Soft delete products that exist in DB but weren't in the sync
+    let deletedCount = 0;
+    for (const [variantId, isDeleted] of existingVariantIds) {
+      if (!syncedVariantIds.has(variantId) && !isDeleted) {
+        const { error } = await client
+          .from('partner_products')
+          .update({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+          })
+          .eq('partner_shop', shopDomain)
+          .eq('partner_variant_id', variantId);
+
+        if (!error) deletedCount++;
+      }
+    }
+
+    return { newCount, updatedCount, deletedCount, restoredCount, error: null };
   } catch (err) {
-    return { newCount: 0, updatedCount: 0, error: 'Failed to upsert partner products' };
+    return { newCount: 0, updatedCount: 0, deletedCount: 0, restoredCount: 0, error: 'Failed to upsert partner products' };
   }
 }
 
@@ -713,6 +764,29 @@ export async function getProductMappingsByShop(shopDomain: string): Promise<{
   }
 }
 
+// Unlink (deactivate) a single product mapping
+export async function unlinkProductMapping(
+  shopDomain: string,
+  partnerVariantId: string
+): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('product_mappings')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('partner_shop', shopDomain)
+      .eq('partner_variant_id', partnerVariantId);
+
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to unlink product mapping' };
+  }
+}
+
 // ============================================
 // Owner Store Functions (for parent OCC store)
 // ============================================
@@ -725,6 +799,7 @@ export interface OwnerStoreRecord {
   is_connected: boolean;
   connected_at: string | null;
   expires_at: string | null;
+  location_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -816,6 +891,28 @@ export async function upsertOwnerStore(
     return { error: null };
   } catch (err) {
     return { error: 'Failed to upsert owner store' };
+  }
+}
+
+// Update owner store location ID
+export async function updateOwnerStoreLocationId(
+  shop: string,
+  locationId: string
+): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('owner_store')
+      .update({
+        location_id: locationId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('shop', shop);
+
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to update owner store location ID' };
   }
 }
 

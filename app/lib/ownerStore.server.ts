@@ -1,4 +1,5 @@
-import { getOwnerStore, upsertOwnerStore } from "./supabase.server";
+import { getOwnerStore, upsertOwnerStore, updateOwnerStoreLocationId } from "./supabase.server";
+import { LOCATIONS_QUERY, type LocationsQueryResult } from "./shopify/queries/locations";
 
 // Refresh token if it expires within 5 minutes
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -10,6 +11,7 @@ export interface TokenResult {
   shop: string | null;
   accessToken: string | null;
   expiresAt: string | null;
+  locationId: string | null;
   error: string | null;
 }
 
@@ -17,6 +19,35 @@ interface ClientCredentialsResponse {
   access_token: string;
   scope: string;
   expires_in: number;
+}
+
+// Fetch the store's primary location ID
+async function fetchLocationId(shop: string, accessToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://${shop}/admin/api/2025-01/graphql.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': accessToken,
+        },
+        body: JSON.stringify({ query: LOCATIONS_QUERY }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Failed to fetch locations:', response.status);
+      return null;
+    }
+
+    const result = await response.json() as { data: LocationsQueryResult };
+    const locationId = result.data?.locations?.edges?.[0]?.node?.id;
+    return locationId ?? null;
+  } catch (error) {
+    console.error('Error fetching location:', error);
+    return null;
+  }
 }
 
 // Fetch a new token using client credentials grant
@@ -69,6 +100,7 @@ export async function getValidOwnerStoreToken(): Promise<TokenResult> {
       shop: null,
       accessToken: null,
       expiresAt: null,
+      locationId: null,
       error: 'OCC_STORE_DOMAIN not set',
     };
   }
@@ -81,6 +113,7 @@ export async function getValidOwnerStoreToken(): Promise<TokenResult> {
       shop: storeDomain,
       accessToken: null,
       expiresAt: null,
+      locationId: null,
       error: dbError,
     };
   }
@@ -111,8 +144,18 @@ export async function getValidOwnerStoreToken(): Promise<TokenResult> {
           shop: storeDomain,
           accessToken: null,
           expiresAt: null,
+          locationId: null,
           error: upsertError,
         };
+      }
+
+      // Fetch and cache location ID if not already cached
+      let locationId = ownerStore?.location_id ?? null;
+      if (!locationId) {
+        locationId = await fetchLocationId(storeDomain, newToken.accessToken);
+        if (locationId) {
+          await updateOwnerStoreLocationId(storeDomain, locationId);
+        }
       }
 
       return {
@@ -120,6 +163,7 @@ export async function getValidOwnerStoreToken(): Promise<TokenResult> {
         shop: storeDomain,
         accessToken: newToken.accessToken,
         expiresAt: newExpiresAt.toISOString(),
+        locationId,
         error: null,
       };
     } catch (err) {
@@ -128,17 +172,27 @@ export async function getValidOwnerStoreToken(): Promise<TokenResult> {
         shop: storeDomain,
         accessToken: null,
         expiresAt: null,
+        locationId: null,
         error: err instanceof Error ? err.message : 'Failed to refresh token',
       };
     }
   }
 
-  // Token is still valid
+  // Token is still valid - but check if we need to fetch location
+  let locationId = ownerStore!.location_id ?? null;
+  if (!locationId && ownerStore!.access_token) {
+    locationId = await fetchLocationId(storeDomain, ownerStore!.access_token);
+    if (locationId) {
+      await updateOwnerStoreLocationId(storeDomain, locationId);
+    }
+  }
+
   return {
     status: 'connected',
     shop: storeDomain,
     accessToken: ownerStore!.access_token,
     expiresAt: ownerStore!.expires_at,
+    locationId,
     error: null,
   };
 }
@@ -153,6 +207,7 @@ export async function refreshOwnerStoreToken(): Promise<TokenResult> {
       shop: null,
       accessToken: null,
       expiresAt: null,
+      locationId: null,
       error: 'OCC_STORE_DOMAIN not set',
     };
   }
@@ -175,8 +230,15 @@ export async function refreshOwnerStoreToken(): Promise<TokenResult> {
         shop: storeDomain,
         accessToken: null,
         expiresAt: null,
+        locationId: null,
         error: upsertError,
       };
+    }
+
+    // Fetch and cache location ID
+    const locationId = await fetchLocationId(storeDomain, newToken.accessToken);
+    if (locationId) {
+      await updateOwnerStoreLocationId(storeDomain, locationId);
     }
 
     return {
@@ -184,6 +246,7 @@ export async function refreshOwnerStoreToken(): Promise<TokenResult> {
       shop: storeDomain,
       accessToken: newToken.accessToken,
       expiresAt: newExpiresAt.toISOString(),
+      locationId,
       error: null,
     };
   } catch (err) {
@@ -192,6 +255,7 @@ export async function refreshOwnerStoreToken(): Promise<TokenResult> {
       shop: storeDomain,
       accessToken: null,
       expiresAt: null,
+      locationId: null,
       error: err instanceof Error ? err.message : 'Failed to refresh token',
     };
   }
