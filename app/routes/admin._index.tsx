@@ -261,6 +261,21 @@ export default function AdminDashboard() {
           >
             Browse Partners
           </Link>
+          <Link
+            to="/admin/my-store"
+            style={{
+              display: "inline-block",
+              padding: "0.75rem 1.5rem",
+              backgroundColor: "#f3f4f6",
+              color: "#374151",
+              textDecoration: "none",
+              borderRadius: "4px",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+            }}
+          >
+            View My Store Products
+          </Link>
         </div>
       </div>
 

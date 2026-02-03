@@ -62,6 +62,9 @@ export default function AdminLayout() {
             <a href="/admin/partners" style={{ color: "white", textDecoration: "none" }}>
               Partners
             </a>
+            <a href="/admin/my-store" style={{ color: "white", textDecoration: "none" }}>
+              My Store
+            </a>
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
