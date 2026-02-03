@@ -69,6 +69,7 @@ export function ProductDetailModal({
 
   return (
     <div
+      role="presentation"
       style={{
         position: "fixed",
         inset: 0,
@@ -81,6 +82,11 @@ export function ProductDetailModal({
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
           onClose();
         }
       }}

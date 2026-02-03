@@ -823,7 +823,15 @@ export default function AdminPartnerProducts() {
             {availableProducts.map(product => (
               <div
                 key={product.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleProductClick(product)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleProductClick(product);
+                  }
+                }}
                 style={{
                   padding: "1rem",
                   border: "1px solid #e5e7eb",
@@ -835,6 +843,12 @@ export default function AdminPartnerProducts() {
                   e.currentTarget.style.backgroundColor = "#f9fafb";
                 }}
                 onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = "";
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }}
+                onBlur={(e) => {
                   e.currentTarget.style.backgroundColor = "";
                 }}
               >
@@ -910,7 +924,7 @@ export default function AdminPartnerProducts() {
                       {product.inventory_quantity !== null && ` | Stock: ${product.inventory_quantity}`}
                     </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()}>
+                  <div role="presentation" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                     <div>
                       <label htmlFor={`price-${product.partner_variant_id}`} style={{ fontSize: "0.75rem", color: "#666" }}>
                         Your Price
@@ -971,7 +985,15 @@ export default function AdminPartnerProducts() {
             {importedProducts.map(product => (
               <div
                 key={product.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleProductClick(product)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleProductClick(product);
+                  }
+                }}
                 style={{
                   padding: "1rem",
                   border: "1px solid #e5e7eb",
@@ -987,6 +1009,12 @@ export default function AdminPartnerProducts() {
                   e.currentTarget.style.backgroundColor = "#f9fafb";
                 }}
                 onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = "";
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }}
+                onBlur={(e) => {
                   e.currentTarget.style.backgroundColor = "";
                 }}
               >
@@ -1047,7 +1075,7 @@ export default function AdminPartnerProducts() {
                     Partner: ${product.price.toFixed(2)} &rarr; Your Store: ${product.myPrice?.toFixed(2)}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()}>
+                <div role="presentation" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                   <span style={{
                     backgroundColor: "#dcfce7",
                     color: "#16a34a",

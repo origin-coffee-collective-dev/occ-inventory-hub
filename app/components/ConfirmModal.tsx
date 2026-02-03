@@ -65,6 +65,7 @@ export function ConfirmModal({
 
   return (
     <div
+      role="presentation"
       style={{
         position: "fixed",
         inset: 0,
@@ -76,6 +77,11 @@ export function ConfirmModal({
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) {
+          onCancel();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !isLoading) {
           onCancel();
         }
       }}
@@ -149,6 +155,16 @@ export function ConfirmModal({
               }
             }}
             onMouseOut={(e) => {
+              if (!isLoading) {
+                e.currentTarget.style.backgroundColor = confirmButtonColor;
+              }
+            }}
+            onFocus={(e) => {
+              if (!isLoading) {
+                e.currentTarget.style.backgroundColor = confirmButtonHoverColor;
+              }
+            }}
+            onBlur={(e) => {
               if (!isLoading) {
                 e.currentTarget.style.backgroundColor = confirmButtonColor;
               }

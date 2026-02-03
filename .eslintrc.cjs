@@ -74,6 +74,18 @@ module.exports = {
         "plugin:import/recommended",
         "plugin:import/typescript",
       ],
+      rules: {
+        // Disable prop-types rule - TypeScript handles prop validation
+        "react/prop-types": "off",
+        // Allow underscore-prefixed unused variables (common convention)
+        "@typescript-eslint/no-unused-vars": [
+          "error",
+          {
+            argsIgnorePattern: "^_",
+            varsIgnorePattern: "^_",
+          },
+        ],
+      },
     },
 
     // Node

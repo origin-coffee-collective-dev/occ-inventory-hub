@@ -16,7 +16,7 @@ interface ActionData {
   error?: string;
 }
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
   const tokenResult = await getValidOwnerStoreToken();
 
   return {
@@ -27,7 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   } satisfies LoaderData;
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+export const action = async ({ request: _request }: ActionFunctionArgs) => {
   // Force refresh the token using client credentials
   const tokenResult = await refreshOwnerStoreToken();
 

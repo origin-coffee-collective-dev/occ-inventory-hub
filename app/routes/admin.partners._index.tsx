@@ -6,7 +6,7 @@ interface LoaderData {
   partners: PartnerRecord[];
 }
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
   const { data: partners } = await getAllPartners();
 
   return { partners } satisfies LoaderData;
