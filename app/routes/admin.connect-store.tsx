@@ -8,6 +8,7 @@ interface LoaderData {
   isConnected: boolean;
   connectedAt: string | null;
   error?: string;
+  debug?: string;
 }
 
 interface ActionData {
@@ -17,12 +18,9 @@ interface ActionData {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const occStoreDomain = process.env.OCC_STORE_DOMAIN;
 
-  // Debug logging - remove after troubleshooting
-  console.log("=== ENV VAR DEBUG ===");
-  console.log("OCC_STORE_DOMAIN value:", occStoreDomain);
-  console.log("OCC_STORE_DOMAIN type:", typeof occStoreDomain);
-  console.log("All env keys containing OCC or STORE:", Object.keys(process.env).filter(k => k.includes("OCC") || k.includes("STORE")));
-  console.log("=====================");
+  // Debug info - remove after troubleshooting
+  const envKeysWithOccOrStore = Object.keys(process.env).filter(k => k.includes("OCC") || k.includes("STORE") || k.includes("SHOPIFY"));
+  const debugInfo = `OCC_STORE_DOMAIN="${occStoreDomain || "(undefined)"}" | Relevant env keys: ${envKeysWithOccOrStore.join(", ") || "(none)"}`;
 
   if (!occStoreDomain) {
     return {
@@ -30,6 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       isConnected: false,
       connectedAt: null,
       error: "OCC_STORE_DOMAIN environment variable is not set",
+      debug: debugInfo,
     } satisfies LoaderData;
   }
 
@@ -67,7 +66,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function AdminConnectStore() {
-  const { occStoreDomain, isConnected, connectedAt, error: loaderError } = useLoaderData<LoaderData>();
+  const { occStoreDomain, isConnected, connectedAt, error: loaderError, debug } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
 
   return (
@@ -75,6 +74,23 @@ export default function AdminConnectStore() {
       <h1 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1.5rem" }}>
         Connect Parent Store
       </h1>
+
+      {/* Debug Info - remove after troubleshooting */}
+      {debug && (
+        <div style={{
+          backgroundColor: "#f3f4f6",
+          border: "1px solid #d1d5db",
+          color: "#374151",
+          padding: "0.75rem",
+          borderRadius: "4px",
+          marginBottom: "1rem",
+          fontFamily: "monospace",
+          fontSize: "0.75rem",
+          wordBreak: "break-all",
+        }}>
+          <strong>DEBUG:</strong> {debug}
+        </div>
+      )}
 
       {/* Config Error */}
       {loaderError && (
