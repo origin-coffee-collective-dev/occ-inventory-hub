@@ -17,6 +17,13 @@ interface ActionData {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const occStoreDomain = process.env.OCC_STORE_DOMAIN;
 
+  // Debug logging - remove after troubleshooting
+  console.log("=== ENV VAR DEBUG ===");
+  console.log("OCC_STORE_DOMAIN value:", occStoreDomain);
+  console.log("OCC_STORE_DOMAIN type:", typeof occStoreDomain);
+  console.log("All env keys containing OCC or STORE:", Object.keys(process.env).filter(k => k.includes("OCC") || k.includes("STORE")));
+  console.log("=====================");
+
   if (!occStoreDomain) {
     return {
       occStoreDomain: "",
