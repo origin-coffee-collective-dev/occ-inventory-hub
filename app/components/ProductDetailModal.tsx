@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PartnerProductRecord } from "~/lib/supabase.server";
+import { colors } from "~/lib/tokens";
 
 interface ProductDetailModalProps {
   isOpen: boolean;
@@ -94,7 +95,7 @@ export function ProductDetailModal({
       <div
         ref={modalRef}
         style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           borderRadius: "8px",
           maxWidth: "600px",
           width: "100%",
@@ -111,7 +112,7 @@ export function ProductDetailModal({
         <div
           style={{
             padding: "1rem 1.5rem",
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: `1px solid ${colors.border.default}`,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
@@ -123,8 +124,8 @@ export function ProductDetailModal({
               {product.is_new && (
                 <span
                   style={{
-                    backgroundColor: "#dbeafe",
-                    color: "#2563eb",
+                    backgroundColor: colors.info.light,
+                    color: colors.info.text,
                     padding: "0.125rem 0.5rem",
                     borderRadius: "9999px",
                     fontSize: "0.75rem",
@@ -138,8 +139,8 @@ export function ProductDetailModal({
               {product.isImported && (
                 <span
                   style={{
-                    backgroundColor: "#dcfce7",
-                    color: "#16a34a",
+                    backgroundColor: colors.success.light,
+                    color: colors.success.text,
                     padding: "0.125rem 0.5rem",
                     borderRadius: "9999px",
                     fontSize: "0.75rem",
@@ -169,7 +170,7 @@ export function ProductDetailModal({
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  color: "#2563eb",
+                  color: colors.interactive.link,
                   fontSize: "0.875rem",
                   display: "inline-flex",
                   alignItems: "center",
@@ -193,7 +194,7 @@ export function ProductDetailModal({
               border: "none",
               padding: "0.25rem",
               cursor: "pointer",
-              color: "#6b7280",
+              color: colors.text.light,
               flexShrink: 0,
             }}
             aria-label="Close modal"
@@ -219,7 +220,7 @@ export function ProductDetailModal({
               width: "100%",
               aspectRatio: "1",
               maxHeight: "300px",
-              backgroundColor: "#f3f4f6",
+              backgroundColor: colors.background.muted,
               borderRadius: "8px",
               overflow: "hidden",
               display: "flex",
@@ -239,7 +240,7 @@ export function ProductDetailModal({
                 }}
               />
             ) : (
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke={colors.icon.muted} strokeWidth="1">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="M21 15l-5-5L5 21" />
@@ -250,7 +251,7 @@ export function ProductDetailModal({
           {/* Price Information */}
           <div
             style={{
-              backgroundColor: "#f9fafb",
+              backgroundColor: colors.background.hover,
               padding: "1rem",
               borderRadius: "8px",
               marginBottom: "1.5rem",
@@ -258,7 +259,7 @@ export function ProductDetailModal({
           >
             <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>
+                <div style={{ fontSize: "0.75rem", color: colors.text.light, marginBottom: "0.25rem" }}>
                   Partner Price
                 </div>
                 <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>
@@ -267,14 +268,14 @@ export function ProductDetailModal({
               </div>
               {product.compare_at_price && product.compare_at_price > product.price && (
                 <div>
-                  <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>
+                  <div style={{ fontSize: "0.75rem", color: colors.text.light, marginBottom: "0.25rem" }}>
                     Compare At
                   </div>
                   <div
                     style={{
                       fontSize: "1.5rem",
                       fontWeight: 600,
-                      color: "#9ca3af",
+                      color: colors.text.disabled,
                       textDecoration: "line-through",
                     }}
                   >
@@ -284,10 +285,10 @@ export function ProductDetailModal({
               )}
               {product.isImported && product.myPrice !== null && (
                 <div>
-                  <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>
+                  <div style={{ fontSize: "0.75rem", color: colors.text.light, marginBottom: "0.25rem" }}>
                     Your Store Price
                   </div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#16a34a" }}>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 600, color: colors.success.default }}>
                     ${product.myPrice.toFixed(2)}
                   </div>
                 </div>
@@ -298,13 +299,13 @@ export function ProductDetailModal({
           {/* Description */}
           {product.description && (
             <div style={{ marginBottom: "1.5rem" }}>
-              <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", color: "#374151" }}>
+              <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", color: colors.text.secondary }}>
                 Description
               </h3>
               <div
                 style={{
                   fontSize: "0.875rem",
-                  color: "#4b5563",
+                  color: colors.text.tertiary,
                   lineHeight: 1.6,
                 }}
                 dangerouslySetInnerHTML={{ __html: product.description }}
@@ -314,7 +315,7 @@ export function ProductDetailModal({
 
           {/* Product Details */}
           <div style={{ marginBottom: "1.5rem" }}>
-            <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.75rem", color: "#374151" }}>
+            <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.75rem", color: colors.text.secondary }}>
               Product Details
             </h3>
             <div
@@ -327,39 +328,39 @@ export function ProductDetailModal({
             >
               {product.vendor && (
                 <div>
-                  <span style={{ color: "#6b7280" }}>Vendor: </span>
+                  <span style={{ color: colors.text.light }}>Vendor: </span>
                   <span style={{ fontWeight: 500 }}>{product.vendor}</span>
                 </div>
               )}
               {product.product_type && (
                 <div>
-                  <span style={{ color: "#6b7280" }}>Type: </span>
+                  <span style={{ color: colors.text.light }}>Type: </span>
                   <span style={{ fontWeight: 500 }}>{product.product_type}</span>
                 </div>
               )}
               {product.sku && (
                 <div>
-                  <span style={{ color: "#6b7280" }}>SKU: </span>
+                  <span style={{ color: colors.text.light }}>SKU: </span>
                   <span style={{ fontWeight: 500, fontFamily: "monospace" }}>{product.sku}</span>
                 </div>
               )}
               {product.barcode && (
                 <div>
-                  <span style={{ color: "#6b7280" }}>Barcode: </span>
+                  <span style={{ color: colors.text.light }}>Barcode: </span>
                   <span style={{ fontWeight: 500, fontFamily: "monospace" }}>{product.barcode}</span>
                 </div>
               )}
               <div>
-                <span style={{ color: "#6b7280" }}>Stock: </span>
+                <span style={{ color: colors.text.light }}>Stock: </span>
                 <span
                   style={{
                     fontWeight: 500,
                     color:
                       product.inventory_quantity === null
-                        ? "#6b7280"
+                        ? colors.text.light
                         : product.inventory_quantity > 0
-                        ? "#16a34a"
-                        : "#dc2626",
+                        ? colors.success.default
+                        : colors.error.default,
                   }}
                 >
                   {product.inventory_quantity ?? "Not tracked"}
@@ -371,7 +372,7 @@ export function ProductDetailModal({
           {/* Tags */}
           {product.tags && product.tags.length > 0 && (
             <div style={{ marginBottom: "1.5rem" }}>
-              <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", color: "#374151" }}>
+              <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", color: colors.text.secondary }}>
                 Tags
               </h3>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -379,8 +380,8 @@ export function ProductDetailModal({
                   <span
                     key={index}
                     style={{
-                      backgroundColor: "#e5e7eb",
-                      color: "#374151",
+                      backgroundColor: colors.border.default,
+                      color: colors.text.secondary,
                       padding: "0.25rem 0.75rem",
                       borderRadius: "9999px",
                       fontSize: "0.75rem",
@@ -396,10 +397,10 @@ export function ProductDetailModal({
           {/* Sync Information */}
           <div
             style={{
-              borderTop: "1px solid #e5e7eb",
+              borderTop: `1px solid ${colors.border.default}`,
               paddingTop: "1rem",
               fontSize: "0.75rem",
-              color: "#6b7280",
+              color: colors.text.light,
             }}
           >
             <div>First seen: {formatDate(product.first_seen_at)}</div>
@@ -412,7 +413,7 @@ export function ProductDetailModal({
           <div
             style={{
               padding: "1rem 1.5rem",
-              borderTop: "1px solid #e5e7eb",
+              borderTop: `1px solid ${colors.border.default}`,
               display: "flex",
               justifyContent: "flex-end",
               alignItems: "center",
@@ -420,7 +421,7 @@ export function ProductDetailModal({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <label htmlFor="modal-price-input" style={{ fontSize: "0.875rem", color: "#374151" }}>
+              <label htmlFor="modal-price-input" style={{ fontSize: "0.875rem", color: colors.text.secondary }}>
                 Your Price:
               </label>
               <div style={{ display: "flex", alignItems: "center" }}>
@@ -436,7 +437,7 @@ export function ProductDetailModal({
                   style={{
                     width: "100px",
                     padding: "0.5rem",
-                    border: "1px solid #d1d5db",
+                    border: `1px solid ${colors.border.strong}`,
                     borderRadius: "4px",
                     fontSize: "0.875rem",
                   }}
@@ -450,9 +451,9 @@ export function ProductDetailModal({
                 padding: "0.5rem 1.5rem",
                 backgroundColor:
                   isLoading || !priceValue || parseFloat(priceValue) <= 0 || !hasOccCredentials
-                    ? "#9ca3af"
-                    : "#16a34a",
-                color: "white",
+                    ? colors.interactive.disabled
+                    : colors.success.default,
+                color: colors.text.inverse,
                 border: "none",
                 borderRadius: "4px",
                 cursor:

@@ -287,6 +287,59 @@ npm run setup
 
 ---
 
+## Code Quality Requirements
+
+**Before committing any code, ALL checks must pass:**
+
+```bash
+npm run typecheck  # Must pass with zero errors
+npm run lint       # Must pass with zero errors
+```
+
+**This is mandatory.** Do not commit code with TypeScript or ESLint errors. Fix all errors before committing.
+
+---
+
+## Design Tokens
+
+**NEVER use magic hex color codes in components.** Always use the centralized color tokens from `~/lib/tokens.ts`.
+
+**Bad:**
+```typescript
+style={{ color: "#dc2626", backgroundColor: "#f3f4f6" }}
+```
+
+**Good:**
+```typescript
+import { colors } from "~/lib/tokens";
+
+style={{ color: colors.error.default, backgroundColor: colors.background.muted }}
+```
+
+### Available Token Categories
+
+| Category | Usage |
+|----------|-------|
+| `colors.primary` | Brand/primary button colors |
+| `colors.text` | Text colors (primary, secondary, muted, disabled, inverse) |
+| `colors.background` | Background colors (page, card, muted, hover) |
+| `colors.border` | Border colors (default, strong) |
+| `colors.success` | Success states (default, hover, light, text) |
+| `colors.error` | Error/danger states (default, hover, light, border, text) |
+| `colors.warning` | Warning states (default, light, border, text) |
+| `colors.info` | Info states (default, light, text) |
+| `colors.interactive` | Interactive elements (link, linkHover, disabled) |
+| `colors.icon` | Icon colors (default, muted) |
+
+### Adding New Colors
+
+If you need a color that doesn't exist in tokens:
+1. **First**, check if an existing token can be used semantically
+2. **If not**, add the new color to `app/lib/tokens.ts` with a semantic name
+3. **Never** add raw hex codes directly to components
+
+---
+
 ## Code Patterns & Conventions
 
 ### File Naming

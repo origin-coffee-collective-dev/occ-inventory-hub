@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { colors } from "~/lib/tokens";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -60,8 +61,8 @@ export function ConfirmModal({
 
   if (!isOpen) return null;
 
-  const confirmButtonColor = confirmStyle === "danger" ? "#dc2626" : "#1a1a1a";
-  const confirmButtonHoverColor = confirmStyle === "danger" ? "#b91c1c" : "#333";
+  const confirmButtonColor = confirmStyle === "danger" ? colors.error.default : colors.primary.default;
+  const confirmButtonHoverColor = confirmStyle === "danger" ? colors.error.hover : colors.primary.hover;
 
   return (
     <div
@@ -89,7 +90,7 @@ export function ConfirmModal({
       <div
         ref={modalRef}
         style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           borderRadius: "8px",
           padding: "1.5rem",
           maxWidth: "400px",
@@ -111,7 +112,7 @@ export function ConfirmModal({
           {title}
         </h2>
 
-        <p style={{ margin: "0 0 1.5rem", color: "#666", lineHeight: 1.5 }}>
+        <p style={{ margin: "0 0 1.5rem", color: colors.text.muted, lineHeight: 1.5 }}>
           {message}
         </p>
 
@@ -122,9 +123,9 @@ export function ConfirmModal({
             disabled={isLoading}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: "white",
-              color: "#333",
-              border: "1px solid #d1d5db",
+              backgroundColor: colors.background.card,
+              color: colors.primary.hover,
+              border: `1px solid ${colors.border.strong}`,
               borderRadius: "4px",
               cursor: isLoading ? "not-allowed" : "pointer",
               fontSize: "0.875rem",
@@ -141,8 +142,8 @@ export function ConfirmModal({
             disabled={isLoading}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: isLoading ? "#9ca3af" : confirmButtonColor,
-              color: "white",
+              backgroundColor: isLoading ? colors.interactive.disabled : confirmButtonColor,
+              color: colors.text.inverse,
               border: "none",
               borderRadius: "4px",
               cursor: isLoading ? "not-allowed" : "pointer",
