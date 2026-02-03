@@ -8,9 +8,9 @@ import {
   getProductMappingsByShop,
   createProductMapping,
   markPartnerProductSeen,
-  getOwnerStore,
   type PartnerProductRecord,
 } from "~/lib/supabase.server";
+import { getValidOwnerStoreToken } from "~/lib/ownerStore.server";
 import { PRODUCTS_QUERY, type ProductsQueryResult } from "~/lib/shopify/queries/products";
 import { PRODUCT_SET_MUTATION, buildProductSetInput, type ProductSetResult } from "~/lib/shopify/mutations/products";
 import { calculateMargin, formatPrice } from "~/lib/utils/price";
@@ -42,9 +42,9 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     return Response.json({ error: "Shop parameter is required" }, { status: 400 });
   }
 
-  // Check for owner store connection (replaces env vars)
-  const { data: ownerStore } = await getOwnerStore();
-  const hasOccCredentials = !!(ownerStore?.access_token);
+  // Check for owner store connection (auto-refreshes token if needed)
+  const tokenResult = await getValidOwnerStoreToken();
+  const hasOccCredentials = tokenResult.status === 'connected';
 
   // Normalize shop domain
   const partnerShop = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`;
@@ -226,19 +226,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       } satisfies ActionData);
     }
 
-    // Get owner store credentials from database
-    const { data: ownerStore, error: ownerStoreError } = await getOwnerStore();
+    // Get owner store credentials (auto-refreshes token if needed)
+    const tokenResult = await getValidOwnerStoreToken();
 
-    if (ownerStoreError || !ownerStore?.access_token) {
+    if (tokenResult.status !== 'connected' || !tokenResult.accessToken) {
       return Response.json({
         success: false,
         intent,
-        error: "Parent store not connected. Please connect your store from the dashboard.",
+        error: tokenResult.error || "Parent store not connected. Please connect your store from the dashboard.",
       } satisfies ActionData);
     }
 
-    const occStoreDomain = ownerStore.shop;
-    const occStoreToken = ownerStore.access_token;
+    const occStoreDomain = tokenResult.shop!;
+    const occStoreToken = tokenResult.accessToken;
 
     try {
       // Get product data from cache

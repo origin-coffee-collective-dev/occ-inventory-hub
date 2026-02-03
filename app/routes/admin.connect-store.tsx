@@ -1,73 +1,65 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, useActionData, Form, redirect } from "react-router";
-import { generateInstallUrl } from "~/lib/partners/oauth.server";
-import { getOwnerStore } from "~/lib/supabase.server";
+import { useLoaderData, useActionData, Form, redirect, useNavigation } from "react-router";
+import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 
 interface LoaderData {
-  occStoreDomain: string;
-  isConnected: boolean;
-  connectedAt: string | null;
-  error?: string;
-  debug?: string;
+  occStoreDomain: string | null;
+  status: TokenStatus;
+  expiresAt: string | null;
+  error: string | null;
 }
 
 interface ActionData {
+  success: boolean;
   error?: string;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const occStoreDomain = process.env.OCC_STORE_DOMAIN;
-
-  // Debug info - remove after troubleshooting
-  const envKeysWithOccOrStore = Object.keys(process.env).filter(k => k.includes("OCC") || k.includes("STORE") || k.includes("SHOPIFY"));
-  const debugInfo = `OCC_STORE_DOMAIN="${occStoreDomain || "(undefined)"}" | Relevant env keys: ${envKeysWithOccOrStore.join(", ") || "(none)"}`;
-
-  if (!occStoreDomain) {
-    return {
-      occStoreDomain: "",
-      isConnected: false,
-      connectedAt: null,
-      error: "OCC_STORE_DOMAIN environment variable is not set",
-      debug: debugInfo,
-    } satisfies LoaderData;
-  }
-
-  // Get current owner store status
-  const { data: ownerStore } = await getOwnerStore();
-  const isConnected = ownerStore?.shop === occStoreDomain && !!ownerStore?.access_token;
+  const tokenResult = await getValidOwnerStoreToken();
 
   return {
-    occStoreDomain,
-    isConnected,
-    connectedAt: ownerStore?.connected_at ?? null,
+    occStoreDomain: tokenResult.shop,
+    status: tokenResult.status,
+    expiresAt: tokenResult.expiresAt,
+    error: tokenResult.error,
   } satisfies LoaderData;
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const occStoreDomain = process.env.OCC_STORE_DOMAIN;
+  // Force refresh the token using client credentials
+  const tokenResult = await refreshOwnerStoreToken();
 
-  if (!occStoreDomain) {
-    return { error: "OCC_STORE_DOMAIN environment variable is not set" } satisfies ActionData;
+  if (tokenResult.status === 'connected') {
+    return redirect("/admin?store_connected=true");
   }
 
-  const appUrl = process.env.SHOPIFY_APP_URL;
-  if (!appUrl) {
-    console.error("SHOPIFY_APP_URL environment variable is not set");
-    return { error: "App configuration error. SHOPIFY_APP_URL not set." } satisfies ActionData;
-  }
-
-  // Generate OAuth URL with callback to admin store-callback route
-  // Parent store needs write_products to create imported products
-  const redirectUri = `${appUrl}/admin/store-callback`;
-  const ownerStoreScopes = "read_products,write_products,read_inventory,write_inventory";
-  const installUrl = generateInstallUrl(occStoreDomain, redirectUri, ownerStoreScopes);
-
-  return redirect(installUrl);
+  return {
+    success: false,
+    error: tokenResult.error || "Failed to connect store",
+  } satisfies ActionData;
 };
 
 export default function AdminConnectStore() {
-  const { occStoreDomain, isConnected, connectedAt, error: loaderError, debug } = useLoaderData<LoaderData>();
+  const { occStoreDomain, status, expiresAt, error: loaderError } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
+  const navigation = useNavigation();
+
+  const isSubmitting = navigation.state === "submitting";
+
+  // Format token expiry time
+  const formatExpiresAt = (isoString: string | null) => {
+    if (!isoString) return null;
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (diffHours > 0) return `${diffHours}h ${diffMins}m`;
+    return `${diffMins}m`;
+  };
+
+  const isConnected = status === 'connected';
+  const isNotConfigured = status === 'not_configured';
 
   return (
     <div>
@@ -75,25 +67,8 @@ export default function AdminConnectStore() {
         Connect Parent Store
       </h1>
 
-      {/* Debug Info - remove after troubleshooting */}
-      {debug && (
-        <div style={{
-          backgroundColor: "#f3f4f6",
-          border: "1px solid #d1d5db",
-          color: "#374151",
-          padding: "0.75rem",
-          borderRadius: "4px",
-          marginBottom: "1rem",
-          fontFamily: "monospace",
-          fontSize: "0.75rem",
-          wordBreak: "break-all",
-        }}>
-          <strong>DEBUG:</strong> {debug}
-        </div>
-      )}
-
       {/* Config Error */}
-      {loaderError && (
+      {isNotConfigured && (
         <div style={{
           backgroundColor: "#fef2f2",
           border: "1px solid #fecaca",
@@ -102,40 +77,53 @@ export default function AdminConnectStore() {
           borderRadius: "8px",
           marginBottom: "1.5rem",
         }}>
-          <strong>Configuration Error:</strong> {loaderError}
+          <strong>Configuration Error:</strong> OCC_STORE_DOMAIN environment variable is not set.
         </div>
       )}
 
       {/* Connection Status */}
-      {occStoreDomain && (
+      {!isNotConfigured && (
         <div style={{
-          backgroundColor: isConnected ? "#dcfce7" : "#fef3c7",
-          border: `1px solid ${isConnected ? "#86efac" : "#fcd34d"}`,
+          backgroundColor: isConnected ? "#dcfce7" : status === 'error' ? "#fef2f2" : "#fef3c7",
+          border: `1px solid ${isConnected ? "#86efac" : status === 'error' ? "#fecaca" : "#fcd34d"}`,
           padding: "1rem",
           borderRadius: "8px",
           marginBottom: "1.5rem",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-            <span style={{ color: isConnected ? "#16a34a" : "#d97706", fontSize: "1.25rem" }}>
-              {isConnected ? "✓" : "○"}
+            <span style={{
+              color: isConnected ? "#16a34a" : status === 'error' ? "#dc2626" : "#d97706",
+              fontSize: "1.25rem"
+            }}>
+              {isConnected ? "✓" : status === 'error' ? "✕" : "○"}
             </span>
-            <strong style={{ color: isConnected ? "#16a34a" : "#92400e" }}>
-              {isConnected ? "Store Connected" : "Store Not Connected"}
+            <strong style={{
+              color: isConnected ? "#16a34a" : status === 'error' ? "#dc2626" : "#92400e"
+            }}>
+              {isConnected ? "Store Connected" : status === 'error' ? "Connection Error" : "Store Not Connected"}
             </strong>
           </div>
-          <p style={{ margin: 0, color: isConnected ? "#166534" : "#92400e" }}>
+          <p style={{
+            margin: 0,
+            color: isConnected ? "#166534" : status === 'error' ? "#991b1b" : "#92400e"
+          }}>
             {occStoreDomain}
-            {connectedAt && isConnected && (
+            {isConnected && expiresAt && (
               <span style={{ marginLeft: "0.5rem", opacity: 0.8 }}>
-                (connected {new Date(connectedAt).toLocaleDateString()})
+                (token expires in {formatExpiresAt(expiresAt)})
               </span>
             )}
           </p>
+          {loaderError && status === 'error' && (
+            <p style={{ margin: "0.5rem 0 0", fontSize: "0.875rem", color: "#991b1b" }}>
+              {loaderError}
+            </p>
+          )}
         </div>
       )}
 
       {/* Connect Form */}
-      {occStoreDomain && (
+      {!isNotConfigured && (
         <div style={{
           backgroundColor: "white",
           padding: "1.5rem",
@@ -144,8 +132,8 @@ export default function AdminConnectStore() {
         }}>
           <p style={{ marginTop: 0, marginBottom: "1rem", color: "#666" }}>
             {isConnected
-              ? "Store is connected. You can reconnect to refresh the OAuth token if needed."
-              : "Click below to authorize the app on your Shopify store. This enables product imports and inventory sync."}
+              ? "Store is connected. You can reconnect to force a token refresh if needed."
+              : "Click below to connect to your Shopify store using client credentials. This enables product imports and inventory sync."}
           </p>
 
           {actionData?.error && (
@@ -164,23 +152,25 @@ export default function AdminConnectStore() {
           <Form method="post">
             <button
               type="submit"
+              disabled={isSubmitting}
               style={{
                 padding: "0.75rem 1.5rem",
-                backgroundColor: "#1a1a1a",
+                backgroundColor: isSubmitting ? "#9ca3af" : "#1a1a1a",
                 color: "white",
                 border: "none",
                 borderRadius: "4px",
-                cursor: "pointer",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
                 fontSize: "1rem",
                 fontWeight: 500,
               }}
             >
-              {isConnected ? "Reconnect Store" : "Connect Store"}
+              {isSubmitting ? "Connecting..." : isConnected ? "Reconnect Store" : "Connect Store"}
             </button>
           </Form>
 
           <p style={{ marginTop: "1rem", marginBottom: 0, fontSize: "0.875rem", color: "#666" }}>
-            You will be redirected to Shopify to authorize the app. The app requires read/write access to products and inventory.
+            The app uses client credentials to obtain an access token. No redirect required.
+            Tokens are automatically refreshed when they expire.
           </p>
         </div>
       )}
@@ -195,7 +185,7 @@ export default function AdminConnectStore() {
             fontSize: "0.875rem",
           }}
         >
-          ← Back to Dashboard
+          &larr; Back to Dashboard
         </a>
       </div>
     </div>

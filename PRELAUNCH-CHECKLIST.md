@@ -14,14 +14,14 @@ Tasks to complete before merging `dev` into `main` and going to production.
 ## Environment Variables
 
 - [ ] Ensure production Vercel project has all required env vars:
-  - [ ] `SHOPIFY_API_KEY` (production app)
-  - [ ] `SHOPIFY_API_SECRET` (production app)
+  - [ ] `SHOPIFY_API_KEY` (production app - for partners)
+  - [ ] `SHOPIFY_API_SECRET` (production app - for partners)
   - [ ] `SHOPIFY_APP_URL` (production URL)
   - [ ] `SUPABASE_URL`
   - [ ] `SUPABASE_SERVICE_KEY`
-  - [ ] `OCC_STORE_DOMAIN`
-- [ ] Remove deprecated env vars:
-  - [ ] `OCC_STORE_ACCESS_TOKEN` (now stored in DB via OAuth)
+  - [ ] `OCC_STORE_DOMAIN` (parent store domain)
+  - [ ] `OCC_PARENT_CLIENT_ID` (occ-main-api app client ID)
+  - [ ] `OCC_PARENT_CLIENT_SECRET` (occ-main-api app client secret)
 
 ## Shopify App Config
 
@@ -32,7 +32,7 @@ Tasks to complete before merging `dev` into `main` and going to production.
 ## Database
 
 - [ ] Run any pending migrations on production Supabase
-- [ ] Verify `owner_store` table has production credentials (re-run OAuth flow)
+- [ ] Verify `owner_store` connection works (tokens auto-refresh via client credentials)
 
 ## Testing
 

@@ -724,6 +724,7 @@ export interface OwnerStoreRecord {
   scope: string | null;
   is_connected: boolean;
   connected_at: string | null;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -759,7 +760,8 @@ export async function getOwnerStore(): Promise<{
 export async function upsertOwnerStore(
   shop: string,
   accessToken: string,
-  scope: string
+  scope: string,
+  expiresAt?: Date
 ): Promise<{ error: string | null }> {
   try {
     const client = getSupabaseClient();
@@ -789,6 +791,7 @@ export async function upsertOwnerStore(
           scope,
           is_connected: true,
           connected_at: new Date().toISOString(),
+          expires_at: expiresAt?.toISOString() ?? null,
           updated_at: new Date().toISOString(),
         })
         .eq('shop', shop);
@@ -804,6 +807,7 @@ export async function upsertOwnerStore(
           scope,
           is_connected: true,
           connected_at: new Date().toISOString(),
+          expires_at: expiresAt?.toISOString() ?? null,
         });
 
       if (error) return { error: error.message };

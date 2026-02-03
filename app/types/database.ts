@@ -63,6 +63,7 @@ export interface OwnerStore {
   scope: string | null;
   is_connected: boolean;
   connected_at: string | null;
+  expires_at: string | null; // Token expiration for client credentials grant
   created_at: string;
   updated_at: string;
 }
@@ -159,6 +160,7 @@ export type OwnerStoreInsert = {
   scope?: string | null;
   is_connected?: boolean;
   connected_at?: string | null;
+  expires_at?: string | null;
 };
 
 export interface Database {

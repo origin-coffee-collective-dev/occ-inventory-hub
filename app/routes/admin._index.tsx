@@ -1,10 +1,14 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData, Link } from "react-router";
-import { getAllPartners, getOwnerStore, type PartnerRecord, type OwnerStoreRecord } from "~/lib/supabase.server";
+import { getAllPartners, type PartnerRecord } from "~/lib/supabase.server";
+import { getValidOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 
 interface LoaderData {
   partners: PartnerRecord[];
-  ownerStore: OwnerStoreRecord | null;
+  ownerStoreStatus: TokenStatus;
+  ownerStoreDomain: string | null;
+  ownerStoreError: string | null;
+  tokenExpiresAt: string | null;
   storeJustConnected: boolean;
   stats: {
     totalPartners: number;
@@ -16,16 +20,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const storeJustConnected = url.searchParams.get("store_connected") === "true";
 
-  const [{ data: partners }, { data: ownerStore }] = await Promise.all([
+  // Fetch partners and auto-refresh owner store token in parallel
+  const [{ data: partners }, tokenResult] = await Promise.all([
     getAllPartners(),
-    getOwnerStore(),
+    getValidOwnerStoreToken(),
   ]);
 
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
 
   return {
     partners,
-    ownerStore,
+    ownerStoreStatus: tokenResult.status,
+    ownerStoreDomain: tokenResult.shop,
+    ownerStoreError: tokenResult.error,
+    tokenExpiresAt: tokenResult.expiresAt,
     storeJustConnected,
     stats: {
       totalPartners: partners.length,
@@ -35,9 +43,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AdminDashboard() {
-  const { partners, ownerStore, storeJustConnected, stats } = useLoaderData<LoaderData>();
+  const { partners, ownerStoreStatus, ownerStoreDomain, ownerStoreError, tokenExpiresAt, storeJustConnected, stats } = useLoaderData<LoaderData>();
 
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
+
+  // Format token expiry time
+  const formatExpiresAt = (isoString: string | null) => {
+    if (!isoString) return null;
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (diffHours > 0) return `${diffHours}h ${diffMins}m`;
+    return `${diffMins}m`;
+  };
+
+  // Get status indicator styles
+  const getStatusStyles = () => {
+    switch (ownerStoreStatus) {
+      case 'connected':
+        return { bg: "#dcfce7", border: "#86efac", color: "#16a34a", icon: "✓" };
+      case 'expired':
+        return { bg: "#fef3c7", border: "#fcd34d", color: "#d97706", icon: "○" };
+      case 'error':
+        return { bg: "#fef2f2", border: "#fecaca", color: "#dc2626", icon: "✕" };
+      case 'not_configured':
+      default:
+        return { bg: "#f3f4f6", border: "#d1d5db", color: "#6b7280", icon: "○" };
+    }
+  };
+
+  const statusStyles = getStatusStyles();
 
   return (
     <div>
@@ -70,20 +107,25 @@ export default function AdminDashboard() {
         <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem" }}>
           Parent Store Connection
         </h2>
-        {ownerStore ? (
+        {ownerStoreStatus === 'connected' ? (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-                <span style={{ color: "#16a34a", fontSize: "1.25rem" }}>✓</span>
-                <span style={{ fontWeight: 500 }}>{ownerStore.shop}</span>
+                <span style={{ color: statusStyles.color, fontSize: "1.25rem" }}>{statusStyles.icon}</span>
+                <span style={{ fontWeight: 500 }}>{ownerStoreDomain}</span>
+                <span style={{
+                  backgroundColor: statusStyles.bg,
+                  color: statusStyles.color,
+                  padding: "0.125rem 0.5rem",
+                  borderRadius: "9999px",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                }}>
+                  Connected
+                </span>
               </div>
               <div style={{ fontSize: "0.875rem", color: "#666" }}>
-                Scopes: {ownerStore.scope || "N/A"}
-                {ownerStore.connected_at && (
-                  <span style={{ marginLeft: "1rem" }}>
-                    Connected: {new Date(ownerStore.connected_at).toLocaleDateString()}
-                  </span>
-                )}
+                Token expires in: {formatExpiresAt(tokenExpiresAt) || "N/A"}
               </div>
             </div>
             <Link
@@ -100,15 +142,46 @@ export default function AdminDashboard() {
               Reconnect
             </Link>
           </div>
+        ) : ownerStoreStatus === 'error' ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                <span style={{ color: statusStyles.color, fontSize: "1.25rem" }}>{statusStyles.icon}</span>
+                <span style={{ fontWeight: 500, color: statusStyles.color }}>Connection Error</span>
+              </div>
+              <div style={{ fontSize: "0.875rem", color: "#666" }}>
+                {ownerStoreError || "Failed to connect to store"}
+              </div>
+            </div>
+            <Link
+              to="/admin/connect-store"
+              style={{
+                display: "inline-block",
+                padding: "0.75rem 1.5rem",
+                backgroundColor: "#1a1a1a",
+                color: "white",
+                textDecoration: "none",
+                borderRadius: "4px",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+              }}
+            >
+              Reconnect
+            </Link>
+          </div>
         ) : (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
                 <span style={{ color: "#f59e0b", fontSize: "1.25rem" }}>⚠</span>
-                <span style={{ fontWeight: 500, color: "#92400e" }}>Parent store not connected</span>
+                <span style={{ fontWeight: 500, color: "#92400e" }}>
+                  {ownerStoreStatus === 'not_configured' ? 'Store not configured' : 'Parent store not connected'}
+                </span>
               </div>
               <div style={{ fontSize: "0.875rem", color: "#666" }}>
-                Connect your Shopify store to enable product imports.
+                {ownerStoreStatus === 'not_configured'
+                  ? 'OCC_STORE_DOMAIN environment variable is not set.'
+                  : 'Connect your Shopify store to enable product imports.'}
               </div>
             </div>
             <Link

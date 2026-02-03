@@ -29,6 +29,14 @@ The production app (`occ-inventory-hub`) is currently under Shopify App Store re
 
 **Deployment is handled by GitHub CI/CD** - pushing to a branch auto-deploys to the corresponding Vercel project. Do NOT use `vercel --prod` CLI commands for deployment; just `git push`.
 
+## Custom App Install Links
+
+**Dev App (`occ-inventory-hub-dev`) - Custom Distribution:**
+```
+https://admin.shopify.com/store/rq23p0-vg/oauth/install_custom_app?client_id=19bafcd457f52181a12054b310728aaf&no_redirect=true&signature=eyJleHBpcmVzX2F0IjoxNzcwNzQ5OTQxLCJwZXJtYW5lbnRfZG9tYWluIjoicnEyM3AwLXZnLm15c2hvcGlmeS5jb20iLCJjbGllbnRfaWQiOiIxOWJhZmNkNDU3ZjUyMTgxYTEyMDU0YjMxMDcyOGFhZiIsInB1cnBvc2UiOiJjdXN0b21fYXBwIn0%3D--e91a8698c6567a892a06dd637fd196dd6448fd97
+```
+Note: This link is for the Plus organization. Expires around the date encoded in the signature.
+
 ## Pre-Launch Checklist
 
 Before merging `dev` into `main`, review **`PRELAUNCH-CHECKLIST.md`** for required URL updates, environment variable changes, and cleanup tasks.
@@ -159,6 +167,7 @@ occ-inventory-hub/
 | `app/lib/utils/sku.ts` | Partner SKU generation/parsing (`PARTNER-{shop}-{sku}`) |
 | `app/lib/partners/sync.server.ts` | Partner record upsert on app load |
 | `app/lib/partners/oauth.server.ts` | Partner OAuth utilities (URL generation, token exchange) |
+| `app/lib/ownerStore.server.ts` | Parent store token management (client credentials grant, auto-refresh) |
 | `app/lib/shopify/utils/pagination.ts` | Generic GraphQL pagination helpers |
 | `app/lib/shopify/queries/products.ts` | Products GraphQL query |
 
@@ -216,10 +225,12 @@ SCOPES=read_products,read_inventory,write_orders
 SUPABASE_URL=https://[PROJECT].supabase.co
 SUPABASE_SERVICE_KEY=your_service_role_key
 
-# OCC Store Credentials (for admin dashboard product imports)
-# Create a custom app in YOUR Shopify store admin with write_products scope
+# Parent Store API (for admin dashboard product imports)
+# Uses a separate app "occ-main-api" with client credentials grant
+# Create app in Partner Dashboard, install on your parent store
 OCC_STORE_DOMAIN=your-store.myshopify.com
-OCC_STORE_ACCESS_TOKEN=shpat_xxxxx
+OCC_PARENT_CLIENT_ID=your_parent_app_client_id
+OCC_PARENT_CLIENT_SECRET=your_parent_app_client_secret
 
 # Optional
 DEFAULT_MARGIN=0.30  # Override default markup margin

@@ -5,8 +5,8 @@ import { verifyAdminSession, ADMIN_SESSION_COOKIE } from "~/lib/supabase.server"
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
-  // Skip auth for login/logout/callback routes (they handle their own auth)
-  if (url.pathname === "/admin/login" || url.pathname === "/admin/logout" || url.pathname === "/admin/store-callback") {
+  // Skip auth for login/logout routes (they handle their own auth)
+  if (url.pathname === "/admin/login" || url.pathname === "/admin/logout") {
     return { email: null };
   }
 
