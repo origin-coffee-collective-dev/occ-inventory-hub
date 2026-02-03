@@ -1,7 +1,10 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { useLoaderData, Link } from "react-router";
+import { useState, useRef, useEffect } from "react";
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import { useLoaderData, useActionData, useNavigation, Link, Form } from "react-router";
+import toast from "react-hot-toast";
 import { getAllPartners, type PartnerRecord } from "~/lib/supabase.server";
-import { getValidOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
+import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
+import { ConfirmModal } from "~/components/ConfirmModal";
 
 interface LoaderData {
   partners: PartnerRecord[];
@@ -15,6 +18,31 @@ interface LoaderData {
     activePartners: number;
   };
 }
+
+interface ActionData {
+  success: boolean;
+  error?: string;
+}
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "refresh_token") {
+    const tokenResult = await refreshOwnerStoreToken();
+
+    if (tokenResult.status === "connected") {
+      return { success: true } satisfies ActionData;
+    }
+
+    return {
+      success: false,
+      error: tokenResult.error || "Failed to refresh token",
+    } satisfies ActionData;
+  }
+
+  return { success: false, error: "Unknown action" } satisfies ActionData;
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -44,8 +72,42 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function AdminDashboard() {
   const { partners, ownerStoreStatus, ownerStoreDomain, ownerStoreError, tokenExpiresAt, storeJustConnected, stats } = useLoaderData<LoaderData>();
+  const actionData = useActionData<ActionData>();
+  const navigation = useNavigation();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [showRefreshModal, setShowRefreshModal] = useState(false);
 
+  const isSubmitting = navigation.state === "submitting";
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
+  const prevNavigationState = useRef(navigation.state);
+  const hasShownToast = useRef(false);
+
+  // Close modal when submission completes
+  useEffect(() => {
+    if (prevNavigationState.current === "submitting" && navigation.state === "idle") {
+      setShowRefreshModal(false);
+    }
+    prevNavigationState.current = navigation.state;
+  }, [navigation.state]);
+
+  // Show toast when actionData changes
+  useEffect(() => {
+    if (actionData && !hasShownToast.current) {
+      if (actionData.success) {
+        toast.success("Token refreshed successfully");
+      } else if (actionData.error) {
+        toast.error(`Failed to refresh token: ${actionData.error}`);
+      }
+      hasShownToast.current = true;
+    }
+  }, [actionData]);
+
+  // Reset toast flag when starting a new submission
+  useEffect(() => {
+    if (navigation.state === "submitting") {
+      hasShownToast.current = false;
+    }
+  }, [navigation.state]);
 
   // Format token expiry time
   const formatExpiresAt = (isoString: string | null) => {
@@ -128,19 +190,21 @@ export default function AdminDashboard() {
                 Token expires in: {formatExpiresAt(tokenExpiresAt) || "N/A"}
               </div>
             </div>
-            <Link
-              to="/admin/connect-store"
+            <button
+              type="button"
+              onClick={() => setShowRefreshModal(true)}
               style={{
                 padding: "0.5rem 1rem",
                 backgroundColor: "#f3f4f6",
                 color: "#374151",
-                textDecoration: "none",
+                border: "none",
                 borderRadius: "4px",
                 fontSize: "0.875rem",
+                cursor: "pointer",
               }}
             >
-              Reconnect
-            </Link>
+              Refresh Token
+            </button>
           </div>
         ) : ownerStoreStatus === 'error' ? (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -153,21 +217,22 @@ export default function AdminDashboard() {
                 {ownerStoreError || "Failed to connect to store"}
               </div>
             </div>
-            <Link
-              to="/admin/connect-store"
+            <button
+              type="button"
+              onClick={() => setShowRefreshModal(true)}
               style={{
-                display: "inline-block",
                 padding: "0.75rem 1.5rem",
                 backgroundColor: "#1a1a1a",
                 color: "white",
-                textDecoration: "none",
+                border: "none",
                 borderRadius: "4px",
                 fontSize: "0.875rem",
                 fontWeight: 500,
+                cursor: "pointer",
               }}
             >
-              Reconnect
-            </Link>
+              Refresh Token
+            </button>
           </div>
         ) : (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -201,6 +266,7 @@ export default function AdminDashboard() {
             </Link>
           </div>
         )}
+
       </div>
 
       {/* Stats Cards */}
@@ -339,6 +405,23 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Hidden form for token refresh */}
+      <Form method="post" ref={formRef} style={{ display: "none" }}>
+        <input type="hidden" name="intent" value="refresh_token" />
+      </Form>
+
+      {/* Token Refresh Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showRefreshModal}
+        title="Refresh Access Token?"
+        message="This will request a new access token from Shopify. The current token will be replaced and the expiration timer will reset."
+        confirmLabel="Refresh Token"
+        cancelLabel="Cancel"
+        onConfirm={() => formRef.current?.submit()}
+        onCancel={() => setShowRefreshModal(false)}
+        isLoading={isSubmitting}
+      />
     </div>
   );
 }

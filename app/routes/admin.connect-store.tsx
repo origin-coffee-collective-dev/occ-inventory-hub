@@ -1,6 +1,8 @@
+import { useState, useRef, useEffect } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, Form, redirect, useNavigation } from "react-router";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
+import { ConfirmModal } from "~/components/ConfirmModal";
 
 interface LoaderData {
   occStoreDomain: string | null;
@@ -43,8 +45,17 @@ export default function AdminConnectStore() {
   const { occStoreDomain, status, expiresAt, error: loaderError } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const isSubmitting = navigation.state === "submitting";
+
+  // Close modal when submission completes
+  useEffect(() => {
+    if (navigation.state === "idle" && showConfirm) {
+      setShowConfirm(false);
+    }
+  }, [navigation.state, showConfirm]);
 
   // Format token expiry time
   const formatExpiresAt = (isoString: string | null) => {
@@ -132,7 +143,7 @@ export default function AdminConnectStore() {
         }}>
           <p style={{ marginTop: 0, marginBottom: "1rem", color: "#666" }}>
             {isConnected
-              ? "Store is connected. You can reconnect to force a token refresh if needed."
+              ? "Store is connected. Click Refresh Token to get a new access token if needed."
               : "Click below to connect to your Shopify store using client credentials. This enables product imports and inventory sync."}
           </p>
 
@@ -149,9 +160,10 @@ export default function AdminConnectStore() {
             </div>
           )}
 
-          <Form method="post">
+          <Form method="post" ref={formRef}>
             <button
-              type="submit"
+              type={isConnected ? "button" : "submit"}
+              onClick={isConnected ? () => setShowConfirm(true) : undefined}
               disabled={isSubmitting}
               style={{
                 padding: "0.75rem 1.5rem",
@@ -164,9 +176,20 @@ export default function AdminConnectStore() {
                 fontWeight: 500,
               }}
             >
-              {isSubmitting ? "Connecting..." : isConnected ? "Reconnect Store" : "Connect Store"}
+              {isSubmitting ? "Connecting..." : isConnected ? "Refresh Token" : "Connect Store"}
             </button>
           </Form>
+
+          <ConfirmModal
+            isOpen={showConfirm}
+            title="Refresh Access Token?"
+            message="This will request a new access token from Shopify. The current token will be replaced."
+            confirmLabel="Refresh Token"
+            cancelLabel="Cancel"
+            onConfirm={() => formRef.current?.submit()}
+            onCancel={() => setShowConfirm(false)}
+            isLoading={isSubmitting}
+          />
 
           <p style={{ marginTop: "1rem", marginBottom: 0, fontSize: "0.875rem", color: "#666" }}>
             The app uses client credentials to obtain an access token. No redirect required.

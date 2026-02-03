@@ -337,6 +337,73 @@ import { generatePartnerSku, parsePartnerSku } from '~/lib/utils/sku';
 - No customer PII stored - only transaction records
 - Webhooks log all operations to `SyncLog`
 
+### UI Patterns - Confirmation Modals
+
+**Always use confirmation modals for destructive or state-changing operations:**
+- Delete operations (unlinking products, removing partners, etc.)
+- Token refreshes
+- Data updates that can't be easily undone
+- Any action that modifies external state (Shopify API calls)
+
+**Usage:**
+```typescript
+import { ConfirmModal } from "~/components/ConfirmModal";
+
+<ConfirmModal
+  isOpen={showConfirm}
+  title="Delete Product?"
+  message="This will unlink the product from your store. You can re-import it later."
+  confirmLabel="Delete"
+  cancelLabel="Cancel"
+  confirmStyle="danger"  // "danger" for destructive, "primary" for normal
+  onConfirm={() => handleDelete()}
+  onCancel={() => setShowConfirm(false)}
+  isLoading={isDeleting}
+/>
+```
+
+**Guidelines:**
+- For initial "Connect" or "Create" actions, no confirmation is needed
+- For "Refresh", "Update", "Delete", "Unlink" actions, always confirm
+- Use `confirmStyle="danger"` for irreversible/destructive actions
+- Use clear, specific language in the title and message
+
+### UI Patterns - Toast Notifications
+
+**This app uses `react-hot-toast` for notifications.** The `<Toaster>` is configured in the admin layout (`admin.tsx`), so toasts can be called from any admin page.
+
+**Always show toast notifications for action feedback:**
+- Success: When an action completes successfully
+- Error: When an action fails
+- This applies to all state-changing operations (API calls, form submissions, etc.)
+
+**Usage:**
+```typescript
+import toast from "react-hot-toast";
+
+// Success
+toast.success("Token refreshed successfully");
+
+// Error
+toast.error("Failed to refresh token: " + errorMessage);
+
+// Custom
+toast("Processing...", { icon: "⏳" });
+```
+
+**Guidelines:**
+- Every action that modifies state should show a toast on completion
+- Use `toast.success()` for successful operations
+- Use `toast.error()` for failed operations
+- Keep messages concise but informative
+- Don't show toasts for read-only operations (loading data, navigation)
+
+### UI Patterns Summary
+
+For any action that modifies state:
+1. **Before**: Show confirmation modal (for destructive/important actions)
+2. **After**: Show toast notification (success or error)
+
 ---
 
 ## API Scopes

@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { Outlet, redirect, useLoaderData } from "react-router";
+import { Toaster } from "react-hot-toast";
 import { verifyAdminSession, ADMIN_SESSION_COOKIE } from "~/lib/supabase.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -37,11 +38,17 @@ export default function AdminLayout() {
 
   // If no email, render just the outlet (for login/logout pages)
   if (!email) {
-    return <Outlet />;
+    return (
+      <>
+        <Toaster position="top-right" />
+        <Outlet />
+      </>
+    );
   }
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", backgroundColor: "#f6f6f7" }}>
+      <Toaster position="top-right" />
       {/* Admin Header */}
       <header style={{
         backgroundColor: "#1a1a1a",
