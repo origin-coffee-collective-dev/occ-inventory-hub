@@ -540,3 +540,322 @@ export async function deleteSessions(ids: string[]): Promise<{
     return { success: false, error: 'Failed to delete sessions' };
   }
 }
+
+// ============================================
+// Partner Products Functions (product cache)
+// ============================================
+
+export interface PartnerProductRecord {
+  id: string;
+  partner_shop: string;
+  partner_product_id: string;
+  partner_variant_id: string;
+  title: string;
+  sku: string | null;
+  price: number;
+  inventory_quantity: number | null;
+  is_new: boolean;
+  first_seen_at: string;
+  last_synced_at: string;
+}
+
+// Get all cached partner products for a shop
+export async function getPartnerProducts(shopDomain: string): Promise<{
+  data: PartnerProductRecord[];
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('partner_products')
+      .select('*')
+      .eq('partner_shop', shopDomain)
+      .order('title');
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    return { data: data as PartnerProductRecord[], error: null };
+  } catch (err) {
+    return { data: [], error: 'Failed to fetch partner products' };
+  }
+}
+
+// Upsert partner products (sync from partner API)
+export async function upsertPartnerProducts(
+  products: Array<{
+    partner_shop: string;
+    partner_product_id: string;
+    partner_variant_id: string;
+    title: string;
+    sku: string | null;
+    price: number;
+    inventory_quantity: number | null;
+  }>
+): Promise<{
+  newCount: number;
+  updatedCount: number;
+  error: string | null;
+}> {
+  try {
+    if (products.length === 0) {
+      return { newCount: 0, updatedCount: 0, error: null };
+    }
+
+    const client = getSupabaseClient();
+    const shopDomain = products[0].partner_shop;
+
+    // Get existing products to determine which are new
+    const { data: existing } = await client
+      .from('partner_products')
+      .select('partner_variant_id')
+      .eq('partner_shop', shopDomain);
+
+    const existingVariantIds = new Set((existing || []).map(p => p.partner_variant_id));
+
+    let newCount = 0;
+    let updatedCount = 0;
+
+    for (const product of products) {
+      const isExisting = existingVariantIds.has(product.partner_variant_id);
+
+      if (isExisting) {
+        // Update existing product
+        const { error } = await client
+          .from('partner_products')
+          .update({
+            title: product.title,
+            sku: product.sku,
+            price: product.price,
+            inventory_quantity: product.inventory_quantity,
+            last_synced_at: new Date().toISOString(),
+          })
+          .eq('partner_shop', product.partner_shop)
+          .eq('partner_variant_id', product.partner_variant_id);
+
+        if (!error) updatedCount++;
+      } else {
+        // Insert new product
+        const { error } = await client
+          .from('partner_products')
+          .insert({
+            partner_shop: product.partner_shop,
+            partner_product_id: product.partner_product_id,
+            partner_variant_id: product.partner_variant_id,
+            title: product.title,
+            sku: product.sku,
+            price: product.price,
+            inventory_quantity: product.inventory_quantity,
+            is_new: true,
+            first_seen_at: new Date().toISOString(),
+            last_synced_at: new Date().toISOString(),
+          });
+
+        if (!error) newCount++;
+      }
+    }
+
+    return { newCount, updatedCount, error: null };
+  } catch (err) {
+    return { newCount: 0, updatedCount: 0, error: 'Failed to upsert partner products' };
+  }
+}
+
+// Mark partner product as not new (after import or dismiss)
+export async function markPartnerProductSeen(
+  shopDomain: string,
+  partnerVariantId: string
+): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('partner_products')
+      .update({ is_new: false })
+      .eq('partner_shop', shopDomain)
+      .eq('partner_variant_id', partnerVariantId);
+
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to mark product as seen' };
+  }
+}
+
+// Get product mappings for a partner shop
+export async function getProductMappingsByShop(shopDomain: string): Promise<{
+  data: Array<{
+    id: string;
+    partner_variant_id: string;
+    my_product_id: string;
+    my_variant_id: string;
+    partner_price: number | null;
+    my_price: number | null;
+    margin: number;
+  }>;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('product_mappings')
+      .select('id, partner_variant_id, my_product_id, my_variant_id, partner_price, my_price, margin')
+      .eq('partner_shop', shopDomain)
+      .eq('is_active', true);
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err) {
+    return { data: [], error: 'Failed to fetch product mappings' };
+  }
+}
+
+// ============================================
+// Owner Store Functions (for parent OCC store)
+// ============================================
+
+export interface OwnerStoreRecord {
+  id: string;
+  shop: string;
+  access_token: string | null;
+  scope: string | null;
+  is_connected: boolean;
+  connected_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Get the connected owner store (singleton)
+export async function getOwnerStore(): Promise<{
+  data: OwnerStoreRecord | null;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('owner_store')
+      .select('*')
+      .eq('is_connected', true)
+      .single();
+
+    if (error) {
+      // PGRST116 = no rows found, which is expected if not connected
+      if (error.code === 'PGRST116') {
+        return { data: null, error: null };
+      }
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as OwnerStoreRecord, error: null };
+  } catch (err) {
+    return { data: null, error: 'Failed to fetch owner store' };
+  }
+}
+
+// Upsert owner store (connect or update)
+export async function upsertOwnerStore(
+  shop: string,
+  accessToken: string,
+  scope: string
+): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+
+    // First, disconnect any existing owner store
+    await client
+      .from('owner_store')
+      .update({
+        is_connected: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('is_connected', true);
+
+    // Check if this shop already exists
+    const { data: existing } = await client
+      .from('owner_store')
+      .select('id')
+      .eq('shop', shop)
+      .single();
+
+    if (existing) {
+      // Update existing record
+      const { error } = await client
+        .from('owner_store')
+        .update({
+          access_token: accessToken,
+          scope,
+          is_connected: true,
+          connected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('shop', shop);
+
+      if (error) return { error: error.message };
+    } else {
+      // Insert new record
+      const { error } = await client
+        .from('owner_store')
+        .insert({
+          shop,
+          access_token: accessToken,
+          scope,
+          is_connected: true,
+          connected_at: new Date().toISOString(),
+        });
+
+      if (error) return { error: error.message };
+    }
+
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to upsert owner store' };
+  }
+}
+
+// Create a product mapping
+export async function createProductMapping(data: {
+  partnerId: string | null;
+  partnerShop: string;
+  partnerProductId: string;
+  partnerVariantId: string;
+  myProductId: string;
+  myVariantId: string;
+  partnerSku: string | null;
+  mySku: string;
+  partnerPrice: number;
+  myPrice: number;
+  margin: number;
+}): Promise<{ id: string | null; error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+    const { data: result, error } = await client
+      .from('product_mappings')
+      .insert({
+        partner_id: data.partnerId,
+        partner_shop: data.partnerShop,
+        partner_product_id: data.partnerProductId,
+        partner_variant_id: data.partnerVariantId,
+        my_product_id: data.myProductId,
+        my_variant_id: data.myVariantId,
+        partner_sku: data.partnerSku,
+        my_sku: data.mySku,
+        partner_price: data.partnerPrice,
+        my_price: data.myPrice,
+        margin: data.margin,
+        is_active: true,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      return { id: null, error: error.message };
+    }
+
+    return { id: result.id, error: null };
+  } catch (err) {
+    return { id: null, error: 'Failed to create product mapping' };
+  }
+}

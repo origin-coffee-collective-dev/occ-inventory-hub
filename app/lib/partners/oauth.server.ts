@@ -73,13 +73,16 @@ export function validateState(state: string): string | null {
 
 /**
  * Generates the Shopify OAuth authorization URL
+ * @param shop - The shop domain
+ * @param redirectUri - The callback URL
+ * @param customScopes - Optional custom scopes (defaults to SCOPES env var)
  */
-export function generateInstallUrl(shop: string, redirectUri: string): string {
+export function generateInstallUrl(shop: string, redirectUri: string, customScopes?: string): string {
   const state = generateState(shop);
 
   const params = new URLSearchParams({
     client_id: process.env.SHOPIFY_API_KEY || "",
-    scope: SCOPES,
+    scope: customScopes || SCOPES,
     redirect_uri: redirectUri,
     state,
   });
