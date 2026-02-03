@@ -20,6 +20,15 @@ npm run dev
 
 The production app (`occ-inventory-hub`) is currently under Shopify App Store review. Do not use it for development work.
 
+## Deployment Workflow
+
+| Branch | Vercel Project | Shopify App | Auto-deploy |
+|--------|----------------|-------------|-------------|
+| `main` | `occ-inventory-hub` | `occ-inventory-hub` (frozen) | Yes, via GitHub CI/CD |
+| `dev` | `occ-inventory-hub-dev` | `occ-inventory-hub-dev` | Yes, via GitHub CI/CD |
+
+**Deployment is handled by GitHub CI/CD** - pushing to a branch auto-deploys to the corresponding Vercel project. Do NOT use `vercel --prod` CLI commands for deployment; just `git push`.
+
 ## Pre-Launch Checklist
 
 Before merging `dev` into `main`, review **`PRELAUNCH-CHECKLIST.md`** for required URL updates, environment variable changes, and cleanup tasks.
