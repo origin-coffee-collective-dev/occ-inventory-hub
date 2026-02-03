@@ -32,7 +32,7 @@
 | 0 | Dev Environment Setup | ✅ Complete |
 | 1 | Admin UI + Product Import | 🔄 In Progress |
 | 2 | Inventory Sync | ⬚ Not Started |
-| 3 | Order Routing | ⬚ Not Started |
+| 3 | Order Capture & Routing | ⬚ Not Started |
 
 ---
 
@@ -99,18 +99,51 @@
 
 ---
 
-### Phase 3: Order Routing
+### Phase 3: Order Capture & Routing
 
-**What**: When customers order, batch those orders and send to partners.
+**What**: Capture customer orders, store them, and batch-send to partners daily.
 
 **Why**: Partners need to know what to roast and ship to your fulfillment center.
 
+#### Complete Order Lifecycle
+
+```
+┌──────────────┐                      ┌──────────────┐                      ┌──────────────┐
+│   Customer   │   orders/create      │   Database   │    Daily Cron        │   Partner    │
+│ places order │ ─────────────────►   │ PartnerOrder │ ─────────────────►   │   Store      │
+│ on OCC store │      webhook         │  (pending)   │   batch & create     │  (fulfills)  │
+└──────────────┘                      └──────────────┘                      └──────────────┘
+         │                                   │                                     │
+         │                                   │                                     │
+         ▼                                   ▼                                     ▼
+    Real-time                         Stored until                        Ships to OCC
+    capture                           daily cutoff                        fulfillment center
+```
+
+#### Phase 3A: Order Capture (Webhook)
+
+**What**: Real-time capture of customer orders as they happen.
+
 **High-level how**:
-- Listen for orders on your store (webhook or query)
-- Detect partner items by SKU prefix (e.g., `PARTNER-roastery-BLEND01`)
-- Batch orders by partner
-- Create/update orders on partner stores with YOUR fulfillment center as shipping address
-- Track order status in database
+- Register `orders/create` webhook on OCC store
+- When customer places order, webhook fires immediately
+- Parse order line items, identify partner products by SKU prefix (`PARTNER-{shop}-*`)
+- Store in `PartnerOrder` table with status `pending`
+- Group line items by partner shop for later processing
+
+**End state**: Every order with partner products is immediately captured and stored.
+
+#### Phase 3B: Order Processing (Daily Cron)
+
+**What**: Batch-process pending orders and send to partners.
+
+**High-level how**:
+- Vercel cron job runs daily (configurable time, e.g., 6pm)
+- Query all `pending` order items grouped by partner
+- For each partner: create or update order on their store
+- Set shipping address to OCC fulfillment center (not direct to customer)
+- Update status to `created` on success, `failed` on error
+- Log results to `SyncLog`
 
 **Key design decision: Order cadence**
 

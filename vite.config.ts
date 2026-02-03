@@ -38,7 +38,8 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host],
+    // Allow localhost, the Shopify app host, and cloudflare tunnels
+    allowedHosts: [host, "localhost", ".trycloudflare.com"],
     cors: {
       preflightContinue: true,
     },
