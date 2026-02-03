@@ -61,9 +61,9 @@ export interface ProductSetInput {
     name: string;
     values: Array<{ name: string }>;
   }>;
-  media?: Array<{
+  files?: Array<{
     originalSource: string;
-    mediaContentType: 'IMAGE' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'MODEL_3D';
+    contentType?: 'IMAGE' | 'VIDEO' | 'FILE' | 'GENERIC_FILE' | 'MODEL_3D';
     alt?: string;
   }>;
 }
@@ -148,12 +148,12 @@ export function buildProductSetInput(params: {
     ],
   };
 
-  // Add media if image URL is provided
+  // Add files if image URL is provided
   if (params.imageUrl) {
-    input.media = [
+    input.files = [
       {
         originalSource: params.imageUrl,
-        mediaContentType: 'IMAGE',
+        contentType: 'IMAGE',
       },
     ];
   }

@@ -555,6 +555,13 @@ export interface PartnerProductRecord {
   price: number;
   inventory_quantity: number | null;
   image_url: string | null;
+  handle: string | null;
+  description: string | null;
+  compare_at_price: number | null;
+  product_type: string | null;
+  vendor: string | null;
+  tags: string[] | null;
+  barcode: string | null;
   is_new: boolean;
   is_deleted: boolean;
   deleted_at: string | null;
@@ -605,6 +612,13 @@ export async function upsertPartnerProducts(
     price: number;
     inventory_quantity: number | null;
     image_url?: string | null;
+    handle?: string | null;
+    description?: string | null;
+    compare_at_price?: number | null;
+    product_type?: string | null;
+    vendor?: string | null;
+    tags?: string[] | null;
+    barcode?: string | null;
   }>
 ): Promise<{
   newCount: number;
@@ -653,6 +667,13 @@ export async function upsertPartnerProducts(
             price: product.price,
             inventory_quantity: product.inventory_quantity,
             image_url: product.image_url ?? null,
+            handle: product.handle ?? null,
+            description: product.description ?? null,
+            compare_at_price: product.compare_at_price ?? null,
+            product_type: product.product_type ?? null,
+            vendor: product.vendor ?? null,
+            tags: product.tags ?? null,
+            barcode: product.barcode ?? null,
             is_deleted: false,
             deleted_at: null,
             last_synced_at: new Date().toISOString(),
@@ -680,6 +701,13 @@ export async function upsertPartnerProducts(
             price: product.price,
             inventory_quantity: product.inventory_quantity,
             image_url: product.image_url ?? null,
+            handle: product.handle ?? null,
+            description: product.description ?? null,
+            compare_at_price: product.compare_at_price ?? null,
+            product_type: product.product_type ?? null,
+            vendor: product.vendor ?? null,
+            tags: product.tags ?? null,
+            barcode: product.barcode ?? null,
             is_new: true,
             is_deleted: false,
             first_seen_at: new Date().toISOString(),

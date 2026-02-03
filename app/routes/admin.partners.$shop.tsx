@@ -12,6 +12,7 @@ import {
   unlinkProductMapping,
   type PartnerProductRecord,
 } from "~/lib/supabase.server";
+import { ProductDetailModal } from "~/components/ProductDetailModal";
 import { getValidOwnerStoreToken } from "~/lib/ownerStore.server";
 import { PRODUCTS_QUERY, type ProductsQueryResult } from "~/lib/shopify/queries/products";
 import { PRODUCT_SET_MUTATION, buildProductSetInput, type ProductSetResult } from "~/lib/shopify/mutations/products";
@@ -175,6 +176,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         price: number;
         inventory_quantity: number | null;
         image_url: string | null;
+        handle: string | null;
+        description: string | null;
+        compare_at_price: number | null;
+        product_type: string | null;
+        vendor: string | null;
+        tags: string[] | null;
+        barcode: string | null;
       }> = [];
 
       for (const edge of result.data.products.edges) {
@@ -198,6 +206,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             price: parseFloat(variant.price),
             inventory_quantity: variant.inventoryQuantity,
             image_url: imageUrl,
+            handle: product.handle,
+            description: product.descriptionHtml || null,
+            compare_at_price: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
+            product_type: product.productType || null,
+            vendor: product.vendor || null,
+            tags: product.tags && product.tags.length > 0 ? product.tags : null,
+            barcode: variant.barcode || null,
           });
         }
       }
@@ -322,8 +337,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         } satisfies ActionData);
       }
 
-      const result = await response.json() as { data: ProductSetResult };
+      const result = await response.json() as {
+        data: ProductSetResult | null;
+        errors?: Array<{ message: string }>;
+      };
 
+      // Check for GraphQL-level errors first
+      if (result.errors && result.errors.length > 0) {
+        console.error("GraphQL errors:", result.errors);
+        return Response.json({
+          success: false,
+          intent,
+          error: result.errors.map(e => e.message).join(", "),
+        } satisfies ActionData);
+      }
+
+      // Check if data exists
+      if (!result.data || !result.data.productSet) {
+        return Response.json({
+          success: false,
+          intent,
+          error: "Unexpected response from Shopify API",
+        } satisfies ActionData);
+      }
+
+      // Now safe to check userErrors
       if (result.data.productSet.userErrors.length > 0) {
         return Response.json({
           success: false,
@@ -376,9 +414,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         );
 
         if (trackingResponse.ok) {
-          const trackingResult = await trackingResponse.json() as { data: InventoryItemUpdateResult };
-          if (trackingResult.data.inventoryItemUpdate.userErrors.length > 0) {
-            console.error("Inventory tracking error:", trackingResult.data.inventoryItemUpdate.userErrors);
+          const trackingResult = await trackingResponse.json() as {
+            data: InventoryItemUpdateResult | null;
+            errors?: Array<{ message: string }>;
+          };
+
+          // Check for GraphQL-level errors
+          if (trackingResult.errors && trackingResult.errors.length > 0) {
+            console.error("Inventory tracking GraphQL errors:", trackingResult.errors);
+          } else {
+            const trackingUserErrors = trackingResult.data?.inventoryItemUpdate?.userErrors;
+            if (trackingUserErrors && trackingUserErrors.length > 0) {
+              console.error("Inventory tracking error:", trackingUserErrors);
+            }
           }
 
           // Step 2: Set initial inventory quantity
@@ -410,9 +458,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           );
 
           if (quantityResponse.ok) {
-            const quantityResult = await quantityResponse.json() as { data: InventorySetQuantitiesResult };
-            if (quantityResult.data.inventorySetQuantities.userErrors.length > 0) {
-              console.error("Inventory quantity error:", quantityResult.data.inventorySetQuantities.userErrors);
+            const quantityResult = await quantityResponse.json() as {
+              data: InventorySetQuantitiesResult | null;
+              errors?: Array<{ message: string }>;
+            };
+
+            // Check for GraphQL-level errors
+            if (quantityResult.errors && quantityResult.errors.length > 0) {
+              console.error("Inventory quantity GraphQL errors:", quantityResult.errors);
+            } else {
+              const quantityUserErrors = quantityResult.data?.inventorySetQuantities?.userErrors;
+              if (quantityUserErrors && quantityUserErrors.length > 0) {
+                console.error("Inventory quantity error:", quantityUserErrors);
+              }
             }
           } else {
             console.error("Failed to set inventory quantity:", await quantityResponse.text());
@@ -506,6 +564,9 @@ export default function AdminPartnerProducts() {
   // Track which product is being removed (for confirmation modal)
   const [removeProduct, setRemoveProduct] = useState<{ variantId: string; title: string } | null>(null);
 
+  // Track which product is selected for the detail modal
+  const [selectedProduct, setSelectedProduct] = useState<(PartnerProductRecord & { isImported: boolean; myPrice: number | null }) | null>(null);
+
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
   // Format the last synced time
@@ -557,6 +618,22 @@ export default function AdminPartnerProducts() {
 
   const handleRemoveCancel = () => {
     setRemoveProduct(null);
+  };
+
+  const handleProductClick = (product: PartnerProductRecord & { isImported: boolean; myPrice: number | null }) => {
+    setSelectedProduct(product);
+  };
+
+  const handleModalClose = () => {
+    setSelectedProduct(null);
+  };
+
+  const handleModalImport = (variantId: string, price: string) => {
+    submit(
+      { intent: "import", partnerVariantId: variantId, sellingPrice: price },
+      { method: "post" }
+    );
+    setSelectedProduct(null);
   };
 
   // Show toast when action completes
@@ -690,10 +767,19 @@ export default function AdminPartnerProducts() {
             {notImportedProducts.map(product => (
               <div
                 key={product.id}
+                onClick={() => handleProductClick(product)}
                 style={{
                   padding: "1rem",
                   border: "1px solid #e5e7eb",
                   borderRadius: "4px",
+                  cursor: "pointer",
+                  transition: "background-color 0.15s",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = "";
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
@@ -742,6 +828,25 @@ export default function AdminPartnerProducts() {
                         </span>
                       )}
                       <span style={{ fontWeight: 500 }}>{product.title}</span>
+                      {product.handle && (
+                        <a
+                          href={`https://${product.partner_shop}/products/${product.handle}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View on partner store"
+                          style={{
+                            color: "#6b7280",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </a>
+                      )}
                     </div>
                     <div style={{ fontSize: "0.875rem", color: "#666" }}>
                       Partner Price: ${product.price.toFixed(2)}
@@ -749,7 +854,7 @@ export default function AdminPartnerProducts() {
                       {product.inventory_quantity !== null && ` | Stock: ${product.inventory_quantity}`}
                     </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()}>
                     <div>
                       <label htmlFor={`price-${product.partner_variant_id}`} style={{ fontSize: "0.75rem", color: "#666" }}>
                         Your Price
@@ -813,6 +918,7 @@ export default function AdminPartnerProducts() {
             {importedProducts.map(product => (
               <div
                 key={product.id}
+                onClick={() => handleProductClick(product)}
                 style={{
                   padding: "1rem",
                   border: "1px solid #e5e7eb",
@@ -821,6 +927,14 @@ export default function AdminPartnerProducts() {
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: "1rem",
+                  cursor: "pointer",
+                  transition: "background-color 0.15s",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = "";
                 }}
               >
                 {/* Product Image */}
@@ -854,12 +968,33 @@ export default function AdminPartnerProducts() {
                   )}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>{product.title}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 500, marginBottom: "0.25rem" }}>
+                    {product.title}
+                    {product.handle && (
+                      <a
+                        href={`https://${product.partner_shop}/products/${product.handle}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View on partner store"
+                        style={{
+                          color: "#6b7280",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                      </a>
+                    )}
+                  </div>
                   <div style={{ fontSize: "0.875rem", color: "#666" }}>
                     Partner: ${product.price.toFixed(2)} &rarr; Your Store: ${product.myPrice?.toFixed(2)}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()}>
                   <span style={{
                     backgroundColor: "#dcfce7",
                     color: "#16a34a",
@@ -953,6 +1088,22 @@ export default function AdminPartnerProducts() {
           </div>
         </div>
       )}
+
+      {/* Product Detail Modal */}
+      <ProductDetailModal
+        isOpen={!!selectedProduct}
+        product={selectedProduct}
+        onClose={handleModalClose}
+        onImport={handleModalImport}
+        priceValue={selectedProduct ? (priceInputs[selectedProduct.partner_variant_id] || "") : ""}
+        onPriceChange={(value) => {
+          if (selectedProduct) {
+            handlePriceChange(selectedProduct.partner_variant_id, value);
+          }
+        }}
+        isLoading={isLoading}
+        hasOccCredentials={hasOccCredentials}
+      />
     </div>
   );
 }
