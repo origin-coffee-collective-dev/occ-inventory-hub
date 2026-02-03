@@ -35,5 +35,7 @@ direct_api_mode = "offline"
 redirect_urls = [
   "https://occ-inventory-hub-dev.vercel.app/auth/callback",
   "https://occ-inventory-hub-dev.vercel.app/auth/shopify/callback",
-  "https://occ-inventory-hub-dev.vercel.app/partner/callback"
+  "https://occ-inventory-hub-dev.vercel.app/partner/callback",
+  "https://occ-inventory-hub-dev.vercel.app/admin/store-callback",
+  "https://occ-inventory-hub.vercel.app/admin/store-callback"
 ]

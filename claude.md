@@ -1,5 +1,31 @@
 # OCC Inventory Hub - Claude Code Context
 
+## IMPORTANT: Development vs Production Apps
+
+This codebase has **two separate Shopify apps**:
+
+| App | Config File | Purpose | Status |
+|-----|-------------|---------|--------|
+| `occ-inventory-hub` | `shopify.app.toml` | Production app | Under App Store review |
+| `occ-inventory-hub-dev` | `shopify.app.dev.toml` | Development app | Active development |
+
+**Always use the dev app for local development:**
+```bash
+# Correct - uses dev app
+npm run dev -- --config shopify.app.dev.toml
+
+# Wrong - uses production app (under review)
+npm run dev
+```
+
+The production app (`occ-inventory-hub`) is currently under Shopify App Store review. Do not use it for development work.
+
+## Pre-Launch Checklist
+
+Before merging `dev` into `main`, review **`PRELAUNCH-CHECKLIST.md`** for required URL updates, environment variable changes, and cleanup tasks.
+
+---
+
 ## Project Overview
 
 This is a **B2B dropshipping/inventory hub** Shopify embedded app that connects a primary retail store with multiple supplier (partner) stores. The app enables automated product imports with margin markup, inventory synchronization, and order routing.
@@ -87,12 +113,27 @@ occ-inventory-hub/
 
 ### Routes
 
+**Admin Dashboard (Supabase Auth - email/password)**
+| Route | Purpose |
+|-------|---------|
+| `/admin.tsx` | Admin layout with auth check |
+| `/admin._index.tsx` | Admin dashboard with partner stats |
+| `/admin.login.tsx` | Admin login page |
+| `/admin.logout.tsx` | Admin logout action |
+| `/admin.partners._index.tsx` | Partners list |
+| `/admin.partners.$shop.tsx` | Partner products (sync, price, import) |
+
+**Partner-Facing App (Shopify OAuth - embedded in partner's admin)**
+| Route | Purpose |
+|-------|---------|
+| `/app.tsx` | Partner-facing layout with Shopify auth |
+| `/app._index.tsx` | Partner connection status page |
+
+**Public & Auth Routes**
 | Route | Purpose |
 |-------|---------|
 | `/_index/route.tsx` | Public landing page with login |
 | `/auth.login/route.tsx` | Login form and OAuth initiation |
-| `/app.tsx` | Main authenticated layout with partner sync |
-| `/app._index.tsx` | Home page |
 | `/webhooks.compliance.tsx` | GDPR webhook handlers |
 | `/webhooks.app.uninstalled.tsx` | App uninstall cleanup |
 | `/webhooks.app.scopes_update.tsx` | Permission change handler |
@@ -162,8 +203,14 @@ SHOPIFY_APP_URL=https://your-app.example.com
 # Scopes (should match shopify.app.toml)
 SCOPES=read_products,read_inventory,write_orders
 
-# Supabase PostgreSQL Connection
-DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres
+# Supabase Connection
+SUPABASE_URL=https://[PROJECT].supabase.co
+SUPABASE_SERVICE_KEY=your_service_role_key
+
+# OCC Store Credentials (for admin dashboard product imports)
+# Create a custom app in YOUR Shopify store admin with write_products scope
+OCC_STORE_DOMAIN=your-store.myshopify.com
+OCC_STORE_ACCESS_TOKEN=shpat_xxxxx
 
 # Optional
 DEFAULT_MARGIN=0.30  # Override default markup margin
@@ -199,8 +246,8 @@ vercel --prod
 # Install dependencies
 npm install
 
-# Local development with hot reload
-npm run dev
+# Local development with hot reload (ALWAYS use dev app config)
+npm run dev -- --config shopify.app.dev.toml
 
 # Build for production
 npm run build
@@ -299,20 +346,28 @@ write_orders    - Create orders on partner stores
 1. **Fulfillment model** - Partners ship to your fulfillment center (not direct to customer)
 2. **Single inventory location** per store assumed
 3. **Custom/private app** - not public App Store listing
-4. **No user-facing dashboard** - API-only operations
+4. **Two separate experiences**:
+   - **Partner-facing** (`/app/*`) - Shopify embedded app, partners see connection status
+   - **Admin dashboard** (`/admin/*`) - Standalone, email/password login via Supabase Auth
 5. **Margin-based pricing** - not fixed markup
 6. **Session managed by Supabase** via custom session storage adapter
 7. **React Router 7** (not Remix) - use `react-router` imports
-8. **Shopify Polaris** uses web components (`<s-app-nav>`, `<s-link>`)
+8. **Shopify Polaris** uses web components (`<s-app-nav>`, `<s-link>`) for partner-facing app
+9. **Admin dashboard** uses plain HTML/CSS (no Polaris) - accessible directly via Vercel URL
 
 ---
 
-## Future Development Areas
+## Current Implementation Status
 
-When implementing new features, consider:
+**Completed:**
+- Admin dashboard with Supabase Auth (`/admin/*`)
+- Partner products browsing and sync
+- Product import with flexible pricing
+- Partner-facing connection status page
 
-1. **Product Sync** - Implement full product import from partner stores
-2. **Inventory Sync** - Scheduled jobs to mirror inventory levels
-3. **Order Routing** - Parse SKU prefix, create orders on partner stores (ship to fulfillment center)
-4. **Dashboard** - Admin UI for managing partners and viewing sync status
-5. **Notifications** - Alert on sync failures or inventory issues
+**Future Development Areas:**
+
+1. **Inventory Sync** - Scheduled jobs to mirror inventory levels
+2. **Order Routing** - Parse SKU prefix, create orders on partner stores (ship to fulfillment center)
+3. **Notifications** - Alert on sync failures or inventory issues
+4. **Price change detection** - Alert when partner prices change
