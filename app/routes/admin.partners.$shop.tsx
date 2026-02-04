@@ -270,8 +270,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // IMPORT: Create product on OCC's store
   if (intent === "import") {
+    console.log("🚀🚀🚀 IMPORT ACTION STARTED 🚀🚀🚀");
     const partnerVariantId = formData.get("partnerVariantId") as string;
     const sellingPrice = formData.get("sellingPrice") as string;
+    console.log("partnerVariantId:", partnerVariantId, "sellingPrice:", sellingPrice);
 
     if (!partnerVariantId || !sellingPrice) {
       return Response.json({
@@ -1142,26 +1144,36 @@ export default function AdminPartnerProducts() {
           failed: actionData.failed,
         });
       }
+    } else if (actionData?.intent === "import") {
+      // DEBUG: Show inventory debug in an alert for visibility
+      if (actionData.inventoryDebug) {
+        const debug = actionData.inventoryDebug;
+        const debugMsg = [
+          `inventoryItemId: ${debug.inputs.inventoryItemId || "MISSING"}`,
+          `locationId: ${debug.inputs.locationId || "MISSING"}`,
+          `partnerQty: ${debug.inputs.partnerInventoryQty}`,
+          debug.tracking ? `tracking.ok: ${debug.tracking.ok}, tracked: ${debug.tracking.tracked}` : "tracking: not called",
+          debug.quantity ? `quantity.ok: ${debug.quantity.ok}` : "quantity: not called",
+          debug.skipped ? `SKIPPED: ${debug.skipped}` : "",
+        ].filter(Boolean).join("\n");
+
+        // Show in alert so it's very visible
+        alert("INVENTORY DEBUG:\n\n" + debugMsg);
+
+        // Also log full details to console
+        console.log("=== INVENTORY DEBUG (from server) ===");
+        console.log(JSON.stringify(actionData.inventoryDebug, null, 2));
+      }
+
+      if (actionData.success && actionData.message) {
+        toast.success(actionData.message);
+      } else if (!actionData.success && actionData.error) {
+        toast.error(actionData.error);
+      }
     } else if (actionData?.success && actionData?.message) {
       toast.success(actionData.message);
     } else if (!actionData?.success && actionData?.error) {
       toast.error(actionData.error);
-    }
-
-    // DEBUG: Log inventory debug info to browser console
-    if (actionData?.inventoryDebug) {
-      console.log("=== INVENTORY DEBUG (from server) ===");
-      console.log("Inputs:", actionData.inventoryDebug.inputs);
-      if (actionData.inventoryDebug.tracking) {
-        console.log("Tracking Response:", actionData.inventoryDebug.tracking);
-      }
-      if (actionData.inventoryDebug.quantity) {
-        console.log("Quantity Response:", actionData.inventoryDebug.quantity);
-      }
-      if (actionData.inventoryDebug.skipped) {
-        console.log("Skipped:", actionData.inventoryDebug.skipped);
-      }
-      console.log("Full debug object:", JSON.stringify(actionData.inventoryDebug, null, 2));
     }
   }, [actionData]);
 
