@@ -682,6 +682,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     // Process valid products sequentially
     let succeeded = 0;
     const failed = [...validationErrors];
+    const inventoryDebugList: Array<{ title: string; inventoryItemId?: string; locationId?: string | null; trackingStatus?: number; trackingBody?: string; quantityStatus?: number; quantityBody?: string; error?: string }> = [];
 
     for (const { variantId, sellingPrice, cachedProduct } of validProducts) {
       try {
@@ -766,10 +767,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         const inventoryItemId = createdVariant.inventoryItem?.id;
         const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
 
+        // DEBUG: Collect inventory debug info
+        const invDebug: typeof inventoryDebugList[0] = {
+          title: cachedProduct.title,
+          inventoryItemId,
+          locationId,
+        };
+
         if (inventoryItemId && locationId) {
           try {
             // Enable tracking
-            await fetch(
+            const trackingResp = await fetch(
               `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
               {
                 method: 'POST',
@@ -787,8 +795,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               }
             );
 
+            const trackingText = await trackingResp.text();
+            invDebug.trackingStatus = trackingResp.status;
+            invDebug.trackingBody = trackingText;
+
             // Set quantity
-            await fetch(
+            const quantityResp = await fetch(
               `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
               {
                 method: 'POST',
@@ -814,10 +826,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
                 }),
               }
             );
+
+            const quantityText = await quantityResp.text();
+            invDebug.quantityStatus = quantityResp.status;
+            invDebug.quantityBody = quantityText;
           } catch (invError) {
-            console.error("Inventory setup error for bulk import:", invError);
+            invDebug.error = invError instanceof Error ? invError.message : String(invError);
           }
         }
+
+        // Add to debug list
+        inventoryDebugList.push(invDebug);
 
         // Create product mapping
         await createProductMapping({
@@ -858,7 +877,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       message: `Imported ${succeeded} of ${total} products`,
       succeeded,
       failed,
-    } satisfies ActionData);
+      // DEBUG: Include inventory debug info
+      bulkInventoryDebug: inventoryDebugList,
+    });
   }
 
   // UNLINK: Remove the product mapping (mark as no longer imported)
@@ -1184,7 +1205,7 @@ export default function AdminPartnerProducts() {
             disabled={isLoading}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: isLoading ? "colors.interactive.disabled" : "colors.primary.default",
+              backgroundColor: isLoading ? colors.interactive.disabled : colors.primary.default,
               color: "white",
               border: "none",
               borderRadius: "4px",
@@ -1380,7 +1401,7 @@ export default function AdminPartnerProducts() {
             disabled={isLoading}
             style={{
               padding: "0.75rem 1.5rem",
-              backgroundColor: isLoading ? "colors.interactive.disabled" : "colors.primary.default",
+              backgroundColor: isLoading ? colors.interactive.disabled : colors.primary.default,
               color: "white",
               border: "none",
               borderRadius: "4px",
@@ -1627,7 +1648,7 @@ export default function AdminPartnerProducts() {
                       disabled={isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials}
                       style={{
                         padding: "0.5rem 1rem",
-                        backgroundColor: (isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials) ? "colors.interactive.disabled" : "colors.success.default",
+                        backgroundColor: (isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials) ? colors.interactive.disabled : colors.success.default,
                         color: "white",
                         border: "none",
                         borderRadius: "4px",
@@ -1714,7 +1735,7 @@ export default function AdminPartnerProducts() {
                       }}
                     />
                   ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="colors.interactive.disabled" strokeWidth="1.5">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.interactive.disabled} strokeWidth="1.5">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
                       <path d="M21 15l-5-5L5 21" />
@@ -1831,7 +1852,7 @@ export default function AdminPartnerProducts() {
                       }}
                     />
                   ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="colors.interactive.disabled" strokeWidth="1.5">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.interactive.disabled} strokeWidth="1.5">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
                       <path d="M21 15l-5-5L5 21" />
