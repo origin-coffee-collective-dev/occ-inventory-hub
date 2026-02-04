@@ -1136,6 +1136,11 @@ export default function AdminPartnerProducts() {
 
   // Show toast when action completes
   useEffect(() => {
+    // DEBUG: Always show what actionData contains
+    if (actionData) {
+      alert("ACTION DATA:\n" + JSON.stringify(actionData, null, 2));
+    }
+
     if (actionData?.intent === "bulk-import") {
       // Handle bulk import results
       if (actionData.succeeded !== undefined && actionData.failed !== undefined) {
@@ -1143,32 +1148,6 @@ export default function AdminPartnerProducts() {
           succeeded: actionData.succeeded,
           failed: actionData.failed,
         });
-      }
-    } else if (actionData?.intent === "import") {
-      // DEBUG: Show inventory debug in an alert for visibility
-      if (actionData.inventoryDebug) {
-        const debug = actionData.inventoryDebug;
-        const debugMsg = [
-          `inventoryItemId: ${debug.inputs.inventoryItemId || "MISSING"}`,
-          `locationId: ${debug.inputs.locationId || "MISSING"}`,
-          `partnerQty: ${debug.inputs.partnerInventoryQty}`,
-          debug.tracking ? `tracking.ok: ${debug.tracking.ok}, tracked: ${debug.tracking.tracked}` : "tracking: not called",
-          debug.quantity ? `quantity.ok: ${debug.quantity.ok}` : "quantity: not called",
-          debug.skipped ? `SKIPPED: ${debug.skipped}` : "",
-        ].filter(Boolean).join("\n");
-
-        // Show in alert so it's very visible
-        alert("INVENTORY DEBUG:\n\n" + debugMsg);
-
-        // Also log full details to console
-        console.log("=== INVENTORY DEBUG (from server) ===");
-        console.log(JSON.stringify(actionData.inventoryDebug, null, 2));
-      }
-
-      if (actionData.success && actionData.message) {
-        toast.success(actionData.message);
-      } else if (!actionData.success && actionData.error) {
-        toast.error(actionData.error);
       }
     } else if (actionData?.success && actionData?.message) {
       toast.success(actionData.message);
