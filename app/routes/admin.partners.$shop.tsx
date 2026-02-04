@@ -562,6 +562,9 @@ export default function AdminPartnerProducts() {
   // Track active tab
   const [activeTab, setActiveTab] = useState<"imported" | "available" | "unavailable">("imported");
 
+  // Search query state
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Track price inputs for each product
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
 
@@ -640,6 +643,21 @@ export default function AdminPartnerProducts() {
     setSelectedProduct(null);
   };
 
+  // Filter products by search query (title or SKU)
+  const filterBySearch = (productList: typeof products) => {
+    if (!searchQuery.trim()) return productList;
+    const query = searchQuery.toLowerCase().trim();
+    return productList.filter(
+      (p) =>
+        p.title.toLowerCase().includes(query) ||
+        (p.sku && p.sku.toLowerCase().includes(query))
+    );
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+  };
+
   // Show toast when action completes
   useEffect(() => {
     if (actionData?.success && actionData?.message) {
@@ -649,10 +667,20 @@ export default function AdminPartnerProducts() {
     }
   }, [actionData]);
 
-  // Filter products into three groups for tabs
-  const importedProducts = products.filter(p => p.isImported && !p.is_deleted);
-  const availableProducts = products.filter(p => !p.isImported && !p.is_deleted);
-  const unavailableProducts = products.filter(p => p.is_deleted);
+  // Filter products into three groups for tabs (before search)
+  const allImportedProducts = products.filter(p => p.isImported && !p.is_deleted);
+  const allAvailableProducts = products.filter(p => !p.isImported && !p.is_deleted);
+  const allUnavailableProducts = products.filter(p => p.is_deleted);
+
+  // Apply search filter to each group
+  const importedProducts = filterBySearch(allImportedProducts);
+  const availableProducts = filterBySearch(allAvailableProducts);
+  const unavailableProducts = filterBySearch(allUnavailableProducts);
+
+  // Calculate totals for result count display
+  const totalFilteredProducts = importedProducts.length + availableProducts.length + unavailableProducts.length;
+  const totalAllProducts = allImportedProducts.length + allAvailableProducts.length + allUnavailableProducts.length;
+  const isSearchActive = searchQuery.trim().length > 0;
 
   return (
     <div>
@@ -729,6 +757,84 @@ export default function AdminPartnerProducts() {
 
       {/* Toast notifications */}
       <Toaster position="top-right" />
+
+      {/* Search Box */}
+      {products.length > 0 && (
+        <div style={{ marginBottom: "1rem" }}>
+          <div style={{ position: "relative" }}>
+            {/* Search Icon */}
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={colors.icon.muted}
+              strokeWidth="2"
+              style={{
+                position: "absolute",
+                left: "0.75rem",
+                top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none",
+              }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search products by name or SKU..."
+              style={{
+                width: "100%",
+                padding: "0.75rem 2.5rem 0.75rem 2.5rem",
+                border: `1px solid ${colors.border.default}`,
+                borderRadius: "4px",
+                fontSize: "0.875rem",
+                boxSizing: "border-box",
+              }}
+            />
+            {/* Clear Button */}
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                style={{
+                  position: "absolute",
+                  right: "0.5rem",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "0.25rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: colors.icon.muted,
+                }}
+                title="Clear search"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {/* Result Count */}
+          {isSearchActive && (
+            <p style={{
+              margin: "0.5rem 0 0",
+              fontSize: "0.875rem",
+              color: colors.text.muted,
+            }}>
+              Showing {totalFilteredProducts} of {totalAllProducts} products
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Tab Navigation */}
       {products.length > 0 && (
@@ -1201,7 +1307,9 @@ export default function AdminPartnerProducts() {
           textAlign: "center",
         }}>
           <p style={{ color: colors.text.muted, margin: 0 }}>
-            No products imported yet. Check the Available tab to import products.
+            {isSearchActive
+              ? `No imported products match "${searchQuery}"`
+              : "No products imported yet. Check the Available tab to import products."}
           </p>
         </div>
       )}
@@ -1215,7 +1323,9 @@ export default function AdminPartnerProducts() {
           textAlign: "center",
         }}>
           <p style={{ color: colors.text.muted, margin: 0 }}>
-            All products have been imported or are unavailable.
+            {isSearchActive
+              ? `No available products match "${searchQuery}"`
+              : "All products have been imported or are unavailable."}
           </p>
         </div>
       )}
@@ -1229,7 +1339,9 @@ export default function AdminPartnerProducts() {
           textAlign: "center",
         }}>
           <p style={{ color: colors.text.muted, margin: 0 }}>
-            No unavailable products. All partner products are currently accessible.
+            {isSearchActive
+              ? `No unavailable products match "${searchQuery}"`
+              : "No unavailable products. All partner products are currently accessible."}
           </p>
         </div>
       )}
