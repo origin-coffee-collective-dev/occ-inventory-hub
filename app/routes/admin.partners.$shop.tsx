@@ -19,8 +19,6 @@ import { PRODUCT_SET_MUTATION, buildProductSetInput, type ProductSetResult } fro
 import {
   INVENTORY_ITEM_UPDATE,
   INVENTORY_SET_QUANTITIES,
-  type InventoryItemUpdateResult,
-  type InventorySetQuantitiesResult,
 } from "~/lib/shopify/mutations/inventory";
 import { calculateMargin, formatPrice } from "~/lib/utils/price";
 import { generatePartnerSku } from "~/lib/utils/sku";
@@ -46,13 +44,6 @@ interface ActionData {
   // Bulk import specific fields
   succeeded?: number;
   failed?: Array<{ title: string; variantId: string; error: string }>;
-  // Debug info for inventory tracking
-  inventoryDebug?: {
-    inputs: { inventoryItemId: string | undefined; locationId: string | null | undefined; partnerInventoryQty: number };
-    tracking?: { status: number; ok: boolean; body: unknown; inventoryItem: unknown; tracked: boolean | undefined };
-    quantity?: { status: number; ok: boolean; body: unknown };
-    skipped?: string;
-  };
 }
 
 interface BulkImportResult {
@@ -270,10 +261,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // IMPORT: Create product on OCC's store
   if (intent === "import") {
-    console.log("🚀🚀🚀 IMPORT ACTION STARTED 🚀🚀🚀");
     const partnerVariantId = formData.get("partnerVariantId") as string;
     const sellingPrice = formData.get("sellingPrice") as string;
-    console.log("partnerVariantId:", partnerVariantId, "sellingPrice:", sellingPrice);
 
     if (!partnerVariantId || !sellingPrice) {
       return Response.json({
@@ -411,22 +400,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const locationId = tokenResult.locationId;
       const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
 
-      // DEBUG: Collect debug info to return in response
-      const inventoryDebug: {
-        inputs: { inventoryItemId: string | undefined; locationId: string | null | undefined; partnerInventoryQty: number };
-        tracking?: { status: number; ok: boolean; body: unknown; inventoryItem: unknown; tracked: boolean | undefined };
-        quantity?: { status: number; ok: boolean; body: unknown };
-        skipped?: string;
-      } = {
-        inputs: { inventoryItemId, locationId, partnerInventoryQty },
-      };
-
-      // DEBUG: Log the values we're working with
-      console.log("=== INVENTORY DEBUG ===");
-      console.log("inventoryItemId:", inventoryItemId);
-      console.log("locationId:", locationId);
-      console.log("partnerInventoryQty:", partnerInventoryQty);
-
       if (inventoryItemId && locationId) {
         // Step 1: Enable inventory tracking
         const trackingResponse = await fetch(
@@ -447,49 +420,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           }
         );
 
-        // DEBUG: Log the raw response
-        const trackingResponseText = await trackingResponse.text();
-        console.log("trackingResponse.ok:", trackingResponse.ok);
-        console.log("trackingResponse.status:", trackingResponse.status);
-        console.log("trackingResponse body:", trackingResponseText);
-
-        // Parse the response (we already consumed the body, so parse from text)
-        const trackingResult = JSON.parse(trackingResponseText) as {
-          data: InventoryItemUpdateResult | null;
-          errors?: Array<{ message: string }>;
-        };
-
-        // DEBUG: Log the parsed result
-        console.log("trackingResult.data:", JSON.stringify(trackingResult.data, null, 2));
-        console.log("trackingResult.errors:", trackingResult.errors);
-
-        // Check if inventoryItem was actually returned and tracked is true
-        const inventoryItem = trackingResult.data?.inventoryItemUpdate?.inventoryItem;
-        console.log("inventoryItem returned:", inventoryItem);
-        console.log("tracked value:", inventoryItem?.tracked);
-
-        // Store debug info
-        inventoryDebug.tracking = {
-          status: trackingResponse.status,
-          ok: trackingResponse.ok,
-          body: trackingResult,
-          inventoryItem: inventoryItem,
-          tracked: inventoryItem?.tracked,
-        };
-
         if (trackingResponse.ok) {
-          // Check for GraphQL-level errors
-          if (trackingResult.errors && trackingResult.errors.length > 0) {
-            console.error("Inventory tracking GraphQL errors:", trackingResult.errors);
-          } else {
-            const trackingUserErrors = trackingResult.data?.inventoryItemUpdate?.userErrors;
-            if (trackingUserErrors && trackingUserErrors.length > 0) {
-              console.error("Inventory tracking error:", trackingUserErrors);
-            }
-          }
-
           // Step 2: Set initial inventory quantity
-          const quantityResponse = await fetch(
+          await fetch(
             `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
             {
               method: 'POST',
@@ -516,48 +449,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               }),
             }
           );
-
-          // DEBUG: Log quantity response
-          const quantityResponseText = await quantityResponse.text();
-          console.log("quantityResponse.ok:", quantityResponse.ok);
-          console.log("quantityResponse.status:", quantityResponse.status);
-          console.log("quantityResponse body:", quantityResponseText);
-
-          const quantityResult = JSON.parse(quantityResponseText) as {
-            data: InventorySetQuantitiesResult | null;
-            errors?: Array<{ message: string }>;
-          };
-
-          inventoryDebug.quantity = {
-            status: quantityResponse.status,
-            ok: quantityResponse.ok,
-            body: quantityResult,
-          };
-
-          if (quantityResponse.ok) {
-            // Check for GraphQL-level errors
-            if (quantityResult.errors && quantityResult.errors.length > 0) {
-              console.error("Inventory quantity GraphQL errors:", quantityResult.errors);
-            } else {
-              const quantityUserErrors = quantityResult.data?.inventorySetQuantities?.userErrors;
-              if (quantityUserErrors && quantityUserErrors.length > 0) {
-                console.error("Inventory quantity error:", quantityUserErrors);
-              }
-            }
-          } else {
-            console.error("Failed to set inventory quantity:", quantityResponseText);
-          }
-        } else {
-          console.error("Failed to enable inventory tracking:", trackingResponseText);
         }
-      } else {
-        console.warn("Skipping inventory setup: missing inventoryItemId or locationId");
-        inventoryDebug.skipped = `inventoryItemId=${inventoryItemId}, locationId=${locationId}`;
       }
-
-      // DEBUG: Log final summary
-      console.log("=== INVENTORY DEBUG SUMMARY ===");
-      console.log(JSON.stringify(inventoryDebug, null, 2));
 
       // Create product mapping
       const { error: mappingError } = await createProductMapping({
@@ -586,7 +479,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         intent,
         message: `Imported "${cachedProduct.title}" at $${formatPrice(myPrice)}`,
         importedProductId: createdProduct.id,
-        inventoryDebug,
       } satisfies ActionData);
     } catch (error) {
       console.error("Import error:", error);
@@ -683,7 +575,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     // Process valid products sequentially
     let succeeded = 0;
     const failed = [...validationErrors];
-    const inventoryDebugList: Array<{ title: string; inventoryItemId?: string; locationId?: string | null; trackingStatus?: number; trackingBody?: string; quantityStatus?: number; quantityBody?: string; error?: string }> = [];
 
     for (const { variantId, sellingPrice, cachedProduct } of validProducts) {
       try {
@@ -768,17 +659,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         const inventoryItemId = createdVariant.inventoryItem?.id;
         const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
 
-        // DEBUG: Collect inventory debug info
-        const invDebug: typeof inventoryDebugList[0] = {
-          title: cachedProduct.title,
-          inventoryItemId,
-          locationId,
-        };
-
         if (inventoryItemId && locationId) {
           try {
             // Enable tracking
-            const trackingResp = await fetch(
+            await fetch(
               `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
               {
                 method: 'POST',
@@ -796,12 +680,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               }
             );
 
-            const trackingText = await trackingResp.text();
-            invDebug.trackingStatus = trackingResp.status;
-            invDebug.trackingBody = trackingText;
-
             // Set quantity
-            const quantityResp = await fetch(
+            await fetch(
               `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
               {
                 method: 'POST',
@@ -828,17 +708,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
                 }),
               }
             );
-
-            const quantityText = await quantityResp.text();
-            invDebug.quantityStatus = quantityResp.status;
-            invDebug.quantityBody = quantityText;
           } catch (invError) {
-            invDebug.error = invError instanceof Error ? invError.message : String(invError);
+            // Non-blocking - log but don't fail the import
+            console.error("Inventory setup error:", invError);
           }
         }
-
-        // Add to debug list
-        inventoryDebugList.push(invDebug);
 
         // Create product mapping
         await createProductMapping({
@@ -879,9 +753,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       message: `Imported ${succeeded} of ${total} products`,
       succeeded,
       failed,
-      // DEBUG: Include inventory debug info
-      bulkInventoryDebug: inventoryDebugList,
-    });
+    } satisfies ActionData);
   }
 
   // UNLINK: Remove the product mapping (mark as no longer imported)
@@ -1159,16 +1031,6 @@ export default function AdminPartnerProducts() {
 
   // Show toast when action completes
   useEffect(() => {
-    // DEBUG: Log to console (can be copied from browser devtools)
-    if (actionData) {
-      console.log("=== ACTION DATA (copy from here) ===");
-      console.log(JSON.stringify(actionData, null, 2));
-      console.log("=== END ACTION DATA ===");
-
-      // Show toast directing user to console
-      toast("Debug info logged to browser console (F12)", { icon: "🔍" });
-    }
-
     if (actionData?.intent === "bulk-import") {
       // Handle bulk import results
       if (actionData.succeeded !== undefined && actionData.failed !== undefined) {

@@ -32,6 +32,20 @@ export interface InventoryItemUpdateResult {
 }
 
 // Set inventory quantities at a location
+//
+// IMPORTANT: ignoreCompareQuantity explained
+// ------------------------------------------
+// Shopify's inventorySetQuantities mutation has a race condition protection feature.
+// Normally, you must provide a `compareQuantity` for each item - the quantity you
+// expect it to have before your update. If the actual quantity doesn't match,
+// Shopify rejects the update (prevents two systems overwriting each other).
+//
+// For INITIAL IMPORT: We use `ignoreCompareQuantity: true` because we don't know
+// or care what the current value is - we just want to set it to the partner's value.
+//
+// For ONGOING SYNC (phase 2): Consider using `compareQuantity` to avoid overwriting
+// manual changes made in Shopify admin. This provides optimistic locking.
+//
 export const INVENTORY_SET_QUANTITIES = `
   mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
     inventorySetQuantities(input: $input) {

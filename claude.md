@@ -149,6 +149,29 @@ The **occ-main-api** app (installed on the OCC retail store) requires these scop
 
 **⚠️ If `read_locations` is missing, the location ID will be null and inventory tracking will fail silently.**
 
+### ignoreCompareQuantity Explained
+
+Shopify's `inventorySetQuantities` mutation has a **race condition protection** feature:
+
+- **Normal behavior:** You must provide a `compareQuantity` for each item - the quantity you *expect* it to have before your update. If the actual quantity doesn't match, Shopify rejects the update. This prevents two systems from overwriting each other.
+
+- **For initial import:** We use `ignoreCompareQuantity: true` because we don't know or care what the current value is - we just want to set it to the partner's value.
+
+- **For ongoing sync (phase 2):** Consider using `compareQuantity` instead to avoid overwriting manual changes made directly in Shopify admin. This provides optimistic locking.
+
+```graphql
+# Initial import - just set the value
+input: {
+  ignoreCompareQuantity: true,
+  quantities: [{ inventoryItemId, locationId, quantity: 50 }]
+}
+
+# Ongoing sync - only update if current value matches expected
+input: {
+  quantities: [{ inventoryItemId, locationId, quantity: 50, compareQuantity: 45 }]
+}
+```
+
 ### Troubleshooting Inventory Not Tracked
 
 If imported products show "Inventory not tracked":
