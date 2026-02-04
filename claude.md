@@ -75,6 +75,101 @@ This is a **B2B dropshipping/inventory hub** Shopify embedded app that connects 
 
 ---
 
+## Product Import & Inventory Tracking Flow
+
+### Overview
+
+When importing products from partner stores to the OCC retail store, the app performs these steps:
+
+1. **Create Product** - Uses `productSet` mutation to create the product with margin-adjusted pricing
+2. **Enable Inventory Tracking** - Uses `inventoryItemUpdate` mutation to set `tracked: true`
+3. **Set Initial Quantity** - Uses `inventorySetQuantities` mutation to set the initial stock level
+
+### Why Location ID is Required
+
+Shopify tracks inventory **per location**. A store can have multiple locations (warehouses, retail stores, fulfillment centers), and each product's inventory quantity is tracked separately at each location.
+
+**Example:** A product might have:
+- 50 units at "Main Warehouse" (Location A)
+- 10 units at "Retail Store" (Location B)
+
+When setting inventory via the API, you MUST specify which location:
+
+```graphql
+mutation {
+  inventorySetQuantities(input: {
+    quantities: [{
+      inventoryItemId: "gid://shopify/InventoryItem/123",
+      locationId: "gid://shopify/Location/456",  # Required!
+      quantity: 50
+    }]
+  }) {
+    inventoryAdjustmentGroup { ... }
+    userErrors { field, message }
+  }
+}
+```
+
+**Without a valid `locationId`, inventory cannot be set**, and products will show as "Inventory not tracked" in Shopify.
+
+### How Location ID is Obtained
+
+The location ID is fetched and cached when connecting/refreshing the owner store token:
+
+1. **Token Refresh** → `refreshOwnerStoreToken()` in `app/lib/ownerStore.server.ts`
+2. **Fetch Location** → Queries `locations(first: 1)` to get the primary location
+3. **Cache in Database** → Stored in `owner_store.location_id` column
+
+The location is fetched using this GraphQL query:
+```graphql
+query getLocations {
+  locations(first: 1) {
+    edges {
+      node {
+        id
+        name
+        isActive
+      }
+    }
+  }
+}
+```
+
+### Required Scopes for occ-main-api App
+
+The **occ-main-api** app (installed on the OCC retail store) requires these scopes:
+
+| Scope | Purpose |
+|-------|---------|
+| `read_products` | Read product data when checking for duplicates |
+| `write_products` | Create/update products during import |
+| `read_inventory` | Read current inventory levels |
+| `write_inventory` | Set inventory tracking and quantities |
+| `read_locations` | **Fetch the store's location ID** (required for inventory) |
+
+**⚠️ If `read_locations` is missing, the location ID will be null and inventory tracking will fail silently.**
+
+### Troubleshooting Inventory Not Tracked
+
+If imported products show "Inventory not tracked":
+
+1. **Check `location_id` in database** - Query `owner_store` table, verify `location_id` is not null
+2. **Verify scopes** - Ensure occ-main-api has `read_locations` scope
+3. **Force refresh token** - Use admin dashboard to refresh the store connection (this re-fetches location)
+4. **Check API response** - Enable debug logging to see actual Shopify API responses
+
+### Database: owner_store Table
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `shop` | text | Store domain (e.g., `occ-store.myshopify.com`) |
+| `access_token` | text | Current access token |
+| `scope` | text | Granted scopes |
+| `expires_at` | timestamp | Token expiration time |
+| `location_id` | text | **Cached location GID** (e.g., `gid://shopify/Location/12345`) |
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |

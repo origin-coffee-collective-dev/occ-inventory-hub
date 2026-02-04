@@ -24,6 +24,7 @@ interface ClientCredentialsResponse {
 // Fetch the store's primary location ID
 async function fetchLocationId(shop: string, accessToken: string): Promise<string | null> {
   try {
+    console.log("🔍 Fetching location for shop:", shop);
     const response = await fetch(
       `https://${shop}/admin/api/2025-01/graphql.json`,
       {
@@ -36,13 +37,24 @@ async function fetchLocationId(shop: string, accessToken: string): Promise<strin
       }
     );
 
+    const responseText = await response.text();
+    console.log("🔍 Location API response status:", response.status);
+    console.log("🔍 Location API response body:", responseText);
+
     if (!response.ok) {
-      console.error('Failed to fetch locations:', response.status);
+      console.error('Failed to fetch locations:', response.status, responseText);
       return null;
     }
 
-    const result = await response.json() as { data: LocationsQueryResult };
+    const result = JSON.parse(responseText) as { data: LocationsQueryResult; errors?: Array<{ message: string }> };
+
+    if (result.errors) {
+      console.error('🔍 Location API errors:', result.errors);
+      return null;
+    }
+
     const locationId = result.data?.locations?.edges?.[0]?.node?.id;
+    console.log("🔍 Found location ID:", locationId);
     return locationId ?? null;
   } catch (error) {
     console.error('Error fetching location:', error);

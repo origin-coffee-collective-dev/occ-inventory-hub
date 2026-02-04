@@ -1157,9 +1157,14 @@ export default function AdminPartnerProducts() {
 
   // Show toast when action completes
   useEffect(() => {
-    // DEBUG: Always show what actionData contains
+    // DEBUG: Log to console (can be copied from browser devtools)
     if (actionData) {
-      alert("ACTION DATA:\n" + JSON.stringify(actionData, null, 2));
+      console.log("=== ACTION DATA (copy from here) ===");
+      console.log(JSON.stringify(actionData, null, 2));
+      console.log("=== END ACTION DATA ===");
+
+      // Show toast directing user to console
+      toast("Debug info logged to browser console (F12)", { icon: "🔍" });
     }
 
     if (actionData?.intent === "bulk-import") {
