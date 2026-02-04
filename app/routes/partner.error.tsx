@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
+import { colors } from "~/lib/tokens";
 
 const ERROR_MESSAGES: Record<string, { title: string; message: string }> = {
   missing_shop: {
@@ -76,43 +77,43 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: "100vh",
     padding: "1rem",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    backgroundColor: "#f4f6f8",
+    backgroundColor: colors.background.page,
   },
   content: {
     textAlign: "center",
     maxWidth: "500px",
     padding: "2rem",
-    backgroundColor: "white",
+    backgroundColor: colors.background.card,
     borderRadius: "8px",
     boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
   },
   icon: {
     fontSize: "4rem",
-    color: "#d72c0d",
+    color: colors.error.shopify,
     marginBottom: "1rem",
   },
   heading: {
     margin: "0 0 1rem 0",
     fontSize: "1.5rem",
-    color: "#202223",
+    color: colors.text.primary,
   },
   text: {
     margin: "0 0 1rem 0",
     fontSize: "1rem",
-    color: "#6d7175",
+    color: colors.text.light,
   },
   details: {
     margin: "0 0 1rem 0",
     fontSize: "0.875rem",
-    color: "#8c9196",
+    color: colors.text.lighter,
     fontStyle: "italic",
     padding: "0.5rem",
-    backgroundColor: "#f6f6f7",
+    backgroundColor: colors.background.subtle,
     borderRadius: "4px",
   },
   subtext: {
     margin: 0,
     fontSize: "0.875rem",
-    color: "#8c9196",
+    color: colors.text.lighter,
   },
 };

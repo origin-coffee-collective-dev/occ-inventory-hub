@@ -1,3 +1,5 @@
+import { colors } from "~/lib/tokens";
+
 export default function Privacy() {
   return (
     <div style={styles.container}>
@@ -154,25 +156,25 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "2rem 1rem",
     fontFamily:
       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    backgroundColor: "#f4f6f8",
+    backgroundColor: colors.background.page,
   },
   content: {
     maxWidth: "700px",
     width: "100%",
     padding: "2.5rem",
-    backgroundColor: "white",
+    backgroundColor: colors.background.card,
     borderRadius: "8px",
     boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
   },
   heading: {
     margin: "0 0 0.5rem 0",
     fontSize: "2rem",
-    color: "#202223",
+    color: colors.text.primary,
   },
   lastUpdated: {
     margin: "0 0 2rem 0",
     fontSize: "0.875rem",
-    color: "#8c9196",
+    color: colors.text.lighter,
   },
   section: {
     marginBottom: "2rem",
@@ -180,24 +182,24 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHeading: {
     margin: "0 0 1rem 0",
     fontSize: "1.25rem",
-    color: "#202223",
+    color: colors.text.primary,
   },
   text: {
     margin: "0 0 1rem 0",
     fontSize: "1rem",
-    color: "#6d7175",
+    color: colors.text.light,
     lineHeight: 1.6,
   },
   list: {
     margin: "0 0 1rem 0",
     paddingLeft: "1.5rem",
-    color: "#6d7175",
+    color: colors.text.light,
     lineHeight: 1.8,
   },
   contact: {
     margin: 0,
     fontSize: "1rem",
-    color: "#6d7175",
+    color: colors.text.light,
     lineHeight: 1.6,
   },
 };

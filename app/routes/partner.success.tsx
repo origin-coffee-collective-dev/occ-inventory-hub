@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
+import { colors } from "~/lib/tokens";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -34,35 +35,35 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "1rem",
     fontFamily:
       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    backgroundColor: "#f4f6f8",
+    backgroundColor: colors.background.page,
   },
   content: {
     textAlign: "center",
     maxWidth: "400px",
     padding: "3rem 2rem",
-    backgroundColor: "white",
+    backgroundColor: colors.background.card,
     borderRadius: "8px",
     boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
   },
   icon: {
     fontSize: "4rem",
-    color: "#008060",
+    color: colors.success.shopify,
     marginBottom: "1rem",
   },
   heading: {
     margin: "0 0 1rem 0",
     fontSize: "1.75rem",
-    color: "#202223",
+    color: colors.text.primary,
   },
   text: {
     margin: "0 0 1.5rem 0",
     fontSize: "1rem",
-    color: "#6d7175",
+    color: colors.text.light,
     lineHeight: 1.5,
   },
   subtext: {
     margin: 0,
     fontSize: "0.875rem",
-    color: "#8c9196",
+    color: colors.text.lighter,
   },
 };

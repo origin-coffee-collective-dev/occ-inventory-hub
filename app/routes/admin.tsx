@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { Outlet, redirect, useLoaderData } from "react-router";
 import { Toaster } from "react-hot-toast";
 import { verifyAdminSession, ADMIN_SESSION_COOKIE } from "~/lib/supabase.server";
+import { colors } from "~/lib/tokens";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -47,12 +48,12 @@ export default function AdminLayout() {
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", backgroundColor: "#f6f6f7" }}>
+    <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", backgroundColor: colors.background.subtle }}>
       <Toaster position="top-right" />
       {/* Admin Header */}
       <header style={{
-        backgroundColor: "#1a1a1a",
-        color: "white",
+        backgroundColor: colors.primary.default,
+        color: colors.text.inverse,
         padding: "1rem 2rem",
         display: "flex",
         justifyContent: "space-between",
@@ -63,13 +64,13 @@ export default function AdminLayout() {
             OCC Inventory Hub
           </h1>
           <nav style={{ display: "flex", gap: "1.5rem" }}>
-            <a href="/admin" style={{ color: "white", textDecoration: "none" }}>
+            <a href="/admin" style={{ color: colors.text.inverse, textDecoration: "none" }}>
               Dashboard
             </a>
-            <a href="/admin/partners" style={{ color: "white", textDecoration: "none" }}>
+            <a href="/admin/partners" style={{ color: colors.text.inverse, textDecoration: "none" }}>
               Partners
             </a>
-            <a href="/admin/my-store" style={{ color: "white", textDecoration: "none" }}>
+            <a href="/admin/my-store" style={{ color: colors.text.inverse, textDecoration: "none" }}>
               My Store
             </a>
           </nav>
@@ -82,7 +83,7 @@ export default function AdminLayout() {
               style={{
                 background: "transparent",
                 border: "1px solid rgba(255,255,255,0.3)",
-                color: "white",
+                color: colors.text.inverse,
                 padding: "0.5rem 1rem",
                 borderRadius: "4px",
                 cursor: "pointer",

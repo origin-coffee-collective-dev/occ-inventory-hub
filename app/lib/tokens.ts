@@ -55,7 +55,9 @@ export const colors = {
     default: "#16a34a", // green-600
     hover: "#15803d", // green-700
     light: "#dcfce7", // green-100
+    border: "#86efac", // green-300
     text: "#16a34a",
+    textDark: "#166534", // green-800
     // Shopify green variant
     shopify: "#008060",
   },
@@ -69,6 +71,7 @@ export const colors = {
     light: "#fef2f2", // red-50
     border: "#fecaca", // red-200
     text: "#dc2626",
+    textDark: "#991b1b", // red-800
     // Shopify red variant
     shopify: "#d72c0d",
   },
@@ -78,8 +81,9 @@ export const colors = {
   // ===================
   warning: {
     default: "#f59e0b", // amber-500
+    icon: "#d97706", // amber-600
     light: "#fef3c7", // amber-100
-    border: "#f59e0b", // amber-500
+    border: "#fcd34d", // amber-300
     text: "#92400e", // amber-800
   },
 

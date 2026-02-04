@@ -24,6 +24,7 @@ import {
 } from "~/lib/shopify/mutations/inventory";
 import { calculateMargin, formatPrice } from "~/lib/utils/price";
 import { generatePartnerSku } from "~/lib/utils/sku";
+import { colors } from "~/lib/tokens";
 
 interface LoaderData {
   partnerShop: string;
@@ -657,7 +658,7 @@ export default function AdminPartnerProducts() {
     <div>
       {/* Breadcrumb */}
       <div style={{ marginBottom: "1rem" }}>
-        <Link to="/admin/partners" style={{ color: "#2563eb", textDecoration: "none", fontSize: "0.875rem" }}>
+        <Link to="/admin/partners" style={{ color: colors.interactive.link, textDecoration: "none", fontSize: "0.875rem" }}>
           &larr; Back to Partners
         </Link>
       </div>
@@ -668,12 +669,12 @@ export default function AdminPartnerProducts() {
           <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
             {partnerName}
           </h1>
-          <p style={{ margin: "0.25rem 0 0", color: "#666", fontSize: "0.875rem" }}>
+          <p style={{ margin: "0.25rem 0 0", color: colors.text.muted, fontSize: "0.875rem" }}>
             {partnerShop}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <span style={{ fontSize: "0.875rem", color: "#666" }}>
+          <span style={{ fontSize: "0.875rem", color: colors.text.muted }}>
             Last synced: {formatLastSynced(lastSyncedAt)}
           </span>
           <button
@@ -681,7 +682,7 @@ export default function AdminPartnerProducts() {
             disabled={isLoading}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: isLoading ? "#9ca3af" : "#1a1a1a",
+              backgroundColor: isLoading ? "colors.interactive.disabled" : "colors.primary.default",
               color: "white",
               border: "none",
               borderRadius: "4px",
@@ -697,15 +698,15 @@ export default function AdminPartnerProducts() {
       {/* Credentials Warning */}
       {!hasOccCredentials && (
         <div style={{
-          backgroundColor: "#fef3c7",
-          border: "1px solid #f59e0b",
-          color: "#92400e",
+          backgroundColor: colors.warning.light,
+          border: "1px solid colors.warning.border",
+          color: colors.warning.text,
           padding: "1rem",
           borderRadius: "4px",
           marginBottom: "1rem",
         }}>
           <strong>Store Connection Required:</strong>{" "}
-          <a href="/admin/connect-store" style={{ color: "#92400e" }}>
+          <a href="/admin/connect-store" style={{ color: colors.warning.text }}>
             Connect your parent store
           </a>{" "}
           to enable product imports.
@@ -715,9 +716,9 @@ export default function AdminPartnerProducts() {
       {/* Error State */}
       {error && (
         <div style={{
-          backgroundColor: "#fef2f2",
-          border: "1px solid #fecaca",
-          color: "#dc2626",
+          backgroundColor: colors.error.light,
+          border: "1px solid colors.error.border",
+          color: colors.error.text,
           padding: "1rem",
           borderRadius: "4px",
           marginBottom: "1rem",
@@ -740,8 +741,8 @@ export default function AdminPartnerProducts() {
             onClick={() => setActiveTab("imported")}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: activeTab === "imported" ? "#1a1a1a" : "#f3f4f6",
-              color: activeTab === "imported" ? "white" : "#374151",
+              backgroundColor: activeTab === "imported" ? colors.primary.default : colors.background.muted,
+              color: activeTab === "imported" ? colors.text.inverse : colors.text.secondary,
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
@@ -755,8 +756,8 @@ export default function AdminPartnerProducts() {
             onClick={() => setActiveTab("available")}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: activeTab === "available" ? "#1a1a1a" : "#f3f4f6",
-              color: activeTab === "available" ? "white" : "#374151",
+              backgroundColor: activeTab === "available" ? colors.primary.default : colors.background.muted,
+              color: activeTab === "available" ? colors.text.inverse : colors.text.secondary,
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
@@ -770,8 +771,8 @@ export default function AdminPartnerProducts() {
             onClick={() => setActiveTab("unavailable")}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: activeTab === "unavailable" ? "#1a1a1a" : "#f3f4f6",
-              color: activeTab === "unavailable" ? "white" : "#374151",
+              backgroundColor: activeTab === "unavailable" ? colors.primary.default : colors.background.muted,
+              color: activeTab === "unavailable" ? colors.text.inverse : colors.text.secondary,
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
@@ -793,13 +794,13 @@ export default function AdminPartnerProducts() {
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           textAlign: "center",
         }}>
-          <p style={{ color: "#666", marginBottom: "1rem" }}>No products cached yet.</p>
+          <p style={{ color: colors.text.muted, marginBottom: "1rem" }}>No products cached yet.</p>
           <button
             onClick={handleSync}
             disabled={isLoading}
             style={{
               padding: "0.75rem 1.5rem",
-              backgroundColor: isLoading ? "#9ca3af" : "#1a1a1a",
+              backgroundColor: isLoading ? "colors.interactive.disabled" : "colors.primary.default",
               color: "white",
               border: "none",
               borderRadius: "4px",
@@ -834,19 +835,19 @@ export default function AdminPartnerProducts() {
                 }}
                 style={{
                   padding: "1rem",
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid colors.border.default",
                   borderRadius: "4px",
                   cursor: "pointer",
                   transition: "background-color 0.15s",
                 }}
                 onMouseOver={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                  e.currentTarget.style.backgroundColor = colors.background.hover;
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.backgroundColor = "";
                 }}
                 onFocus={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                  e.currentTarget.style.backgroundColor = colors.background.hover;
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.backgroundColor = "";
@@ -858,7 +859,7 @@ export default function AdminPartnerProducts() {
                     width: "64px",
                     height: "64px",
                     flexShrink: 0,
-                    backgroundColor: "#f3f4f6",
+                    backgroundColor: colors.background.muted,
                     borderRadius: "4px",
                     overflow: "hidden",
                     display: "flex",
@@ -876,7 +877,7 @@ export default function AdminPartnerProducts() {
                         }}
                       />
                     ) : (
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="colors.interactive.disabled" strokeWidth="1.5">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <circle cx="8.5" cy="8.5" r="1.5" />
                         <path d="M21 15l-5-5L5 21" />
@@ -887,8 +888,8 @@ export default function AdminPartnerProducts() {
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
                       {product.is_new && (
                         <span style={{
-                          backgroundColor: "#dbeafe",
-                          color: "#2563eb",
+                          backgroundColor: colors.info.light,
+                          color: colors.interactive.link,
                           padding: "0.125rem 0.5rem",
                           borderRadius: "9999px",
                           fontSize: "0.75rem",
@@ -905,7 +906,7 @@ export default function AdminPartnerProducts() {
                           rel="noopener noreferrer"
                           title="View on partner store"
                           style={{
-                            color: "#6b7280",
+                            color: colors.text.light,
                             display: "inline-flex",
                             alignItems: "center",
                           }}
@@ -918,7 +919,7 @@ export default function AdminPartnerProducts() {
                         </a>
                       )}
                     </div>
-                    <div style={{ fontSize: "0.875rem", color: "#666" }}>
+                    <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
                       Partner Price: ${product.price.toFixed(2)}
                       {product.sku && ` | SKU: ${product.sku}`}
                       {product.inventory_quantity !== null && ` | Stock: ${product.inventory_quantity}`}
@@ -926,7 +927,7 @@ export default function AdminPartnerProducts() {
                   </div>
                   <div role="presentation" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                     <div>
-                      <label htmlFor={`price-${product.partner_variant_id}`} style={{ fontSize: "0.75rem", color: "#666" }}>
+                      <label htmlFor={`price-${product.partner_variant_id}`} style={{ fontSize: "0.75rem", color: colors.text.muted }}>
                         Your Price
                       </label>
                       <div style={{ display: "flex", alignItems: "center" }}>
@@ -942,7 +943,7 @@ export default function AdminPartnerProducts() {
                           style={{
                             width: "80px",
                             padding: "0.5rem",
-                            border: "1px solid #d1d5db",
+                            border: "1px solid colors.border.strong",
                             borderRadius: "4px",
                             fontSize: "0.875rem",
                           }}
@@ -954,7 +955,7 @@ export default function AdminPartnerProducts() {
                       disabled={isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials}
                       style={{
                         padding: "0.5rem 1rem",
-                        backgroundColor: (isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials) ? "#9ca3af" : "#16a34a",
+                        backgroundColor: (isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials) ? "colors.interactive.disabled" : "colors.success.default",
                         color: "white",
                         border: "none",
                         borderRadius: "4px",
@@ -996,7 +997,7 @@ export default function AdminPartnerProducts() {
                 }}
                 style={{
                   padding: "1rem",
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid colors.border.default",
                   borderRadius: "4px",
                   display: "flex",
                   justifyContent: "space-between",
@@ -1006,13 +1007,13 @@ export default function AdminPartnerProducts() {
                   transition: "background-color 0.15s",
                 }}
                 onMouseOver={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                  e.currentTarget.style.backgroundColor = colors.background.hover;
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.backgroundColor = "";
                 }}
                 onFocus={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                  e.currentTarget.style.backgroundColor = colors.background.hover;
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.backgroundColor = "";
@@ -1023,7 +1024,7 @@ export default function AdminPartnerProducts() {
                   width: "48px",
                   height: "48px",
                   flexShrink: 0,
-                  backgroundColor: "#f3f4f6",
+                  backgroundColor: colors.background.muted,
                   borderRadius: "4px",
                   overflow: "hidden",
                   display: "flex",
@@ -1041,7 +1042,7 @@ export default function AdminPartnerProducts() {
                       }}
                     />
                   ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="colors.interactive.disabled" strokeWidth="1.5">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
                       <path d="M21 15l-5-5L5 21" />
@@ -1058,7 +1059,7 @@ export default function AdminPartnerProducts() {
                         rel="noopener noreferrer"
                         title="View on partner store"
                         style={{
-                          color: "#6b7280",
+                          color: colors.text.light,
                           display: "inline-flex",
                           alignItems: "center",
                         }}
@@ -1071,14 +1072,14 @@ export default function AdminPartnerProducts() {
                       </a>
                     )}
                   </div>
-                  <div style={{ fontSize: "0.875rem", color: "#666" }}>
+                  <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
                     Partner: ${product.price.toFixed(2)} &rarr; Your Store: ${product.myPrice?.toFixed(2)}
                   </div>
                 </div>
                 <div role="presentation" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                   <span style={{
-                    backgroundColor: "#dcfce7",
-                    color: "#16a34a",
+                    backgroundColor: colors.success.light,
+                    color: colors.success.text,
                     padding: "0.25rem 0.75rem",
                     borderRadius: "9999px",
                     fontSize: "0.75rem",
@@ -1092,8 +1093,8 @@ export default function AdminPartnerProducts() {
                     style={{
                       padding: "0.25rem 0.5rem",
                       backgroundColor: "transparent",
-                      color: "#dc2626",
-                      border: "1px solid #fecaca",
+                      color: colors.error.text,
+                      border: "1px solid colors.error.border",
                       borderRadius: "4px",
                       cursor: isLoading ? "not-allowed" : "pointer",
                       fontSize: "0.75rem",
@@ -1117,7 +1118,7 @@ export default function AdminPartnerProducts() {
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
         }}>
-          <p style={{ fontSize: "0.875rem", color: "#666", marginBottom: "1rem" }}>
+          <p style={{ fontSize: "0.875rem", color: colors.text.muted, marginBottom: "1rem" }}>
             These products are no longer available from the partner store. They may have been deleted or unpublished.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1126,7 +1127,7 @@ export default function AdminPartnerProducts() {
                 key={product.id}
                 style={{
                   padding: "1rem",
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid colors.border.default",
                   borderRadius: "4px",
                   display: "flex",
                   alignItems: "center",
@@ -1139,7 +1140,7 @@ export default function AdminPartnerProducts() {
                   width: "48px",
                   height: "48px",
                   flexShrink: 0,
-                  backgroundColor: "#f3f4f6",
+                  backgroundColor: colors.background.muted,
                   borderRadius: "4px",
                   overflow: "hidden",
                   display: "flex",
@@ -1158,7 +1159,7 @@ export default function AdminPartnerProducts() {
                       }}
                     />
                   ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="colors.interactive.disabled" strokeWidth="1.5">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
                       <path d="M21 15l-5-5L5 21" />
@@ -1169,14 +1170,14 @@ export default function AdminPartnerProducts() {
                   <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>
                     {product.title}
                   </div>
-                  <div style={{ fontSize: "0.875rem", color: "#666" }}>
+                  <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
                     Last Price: ${product.price.toFixed(2)}
                     {product.sku && ` | SKU: ${product.sku}`}
                   </div>
                 </div>
                 <span style={{
-                  backgroundColor: "#fef2f2",
-                  color: "#dc2626",
+                  backgroundColor: colors.error.light,
+                  color: colors.error.text,
                   padding: "0.25rem 0.75rem",
                   borderRadius: "9999px",
                   fontSize: "0.75rem",
@@ -1199,7 +1200,7 @@ export default function AdminPartnerProducts() {
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           textAlign: "center",
         }}>
-          <p style={{ color: "#666", margin: 0 }}>
+          <p style={{ color: colors.text.muted, margin: 0 }}>
             No products imported yet. Check the Available tab to import products.
           </p>
         </div>
@@ -1213,7 +1214,7 @@ export default function AdminPartnerProducts() {
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           textAlign: "center",
         }}>
-          <p style={{ color: "#666", margin: 0 }}>
+          <p style={{ color: colors.text.muted, margin: 0 }}>
             All products have been imported or are unavailable.
           </p>
         </div>
@@ -1227,7 +1228,7 @@ export default function AdminPartnerProducts() {
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           textAlign: "center",
         }}>
-          <p style={{ color: "#666", margin: 0 }}>
+          <p style={{ color: colors.text.muted, margin: 0 }}>
             No unavailable products. All partner products are currently accessible.
           </p>
         </div>
@@ -1255,7 +1256,7 @@ export default function AdminPartnerProducts() {
             <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.125rem", fontWeight: 600 }}>
               Remove Product
             </h3>
-            <p style={{ margin: "0 0 1.5rem", color: "#666", fontSize: "0.875rem" }}>
+            <p style={{ margin: "0 0 1.5rem", color: colors.text.muted, fontSize: "0.875rem" }}>
               Are you sure you want to remove <strong>{removeProduct.title}</strong> from your imported products?
               It will appear as available for import again.
             </p>
@@ -1265,8 +1266,8 @@ export default function AdminPartnerProducts() {
                 style={{
                   padding: "0.5rem 1rem",
                   backgroundColor: "white",
-                  color: "#374151",
-                  border: "1px solid #d1d5db",
+                  color: colors.text.secondary,
+                  border: "1px solid colors.border.strong",
                   borderRadius: "4px",
                   cursor: "pointer",
                   fontSize: "0.875rem",
@@ -1279,7 +1280,7 @@ export default function AdminPartnerProducts() {
                 disabled={isLoading}
                 style={{
                   padding: "0.5rem 1rem",
-                  backgroundColor: "#dc2626",
+                  backgroundColor: colors.error.default,
                   color: "white",
                   border: "none",
                   borderRadius: "4px",

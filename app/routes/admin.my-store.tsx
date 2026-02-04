@@ -1,6 +1,7 @@
 import { useLoaderData, Link } from "react-router";
 import { getValidOwnerStoreToken } from "~/lib/ownerStore.server";
 import { PRODUCTS_QUERY, type ProductsQueryResult } from "~/lib/shopify/queries/products";
+import { colors } from "~/lib/tokens";
 
 interface LoaderData {
   products: Array<{
@@ -111,8 +112,8 @@ export default function MyStore() {
           to="/admin"
           style={{
             padding: "0.5rem 1rem",
-            backgroundColor: "#f3f4f6",
-            color: "#374151",
+            backgroundColor: colors.background.muted,
+            color: colors.text.secondary,
             textDecoration: "none",
             borderRadius: "4px",
             fontSize: "0.875rem",
@@ -124,7 +125,7 @@ export default function MyStore() {
 
       {/* Store Info */}
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: colors.background.card,
         padding: "1rem 1.5rem",
         borderRadius: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -136,7 +137,7 @@ export default function MyStore() {
         <div>
           <span style={{ fontWeight: 500 }}>{shop || 'Not connected'}</span>
         </div>
-        <div style={{ fontSize: "0.875rem", color: "#666" }}>
+        <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
           {productCount} products
         </div>
       </div>
@@ -144,9 +145,9 @@ export default function MyStore() {
       {/* Error State */}
       {error && (
         <div style={{
-          backgroundColor: "#fef2f2",
-          border: "1px solid #fecaca",
-          color: "#dc2626",
+          backgroundColor: colors.error.light,
+          border: `1px solid ${colors.error.border}`,
+          color: colors.error.default,
           padding: "1rem",
           borderRadius: "8px",
           marginBottom: "1.5rem",
@@ -158,7 +159,7 @@ export default function MyStore() {
       {/* Products Table */}
       {products.length > 0 ? (
         <div style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           overflow: "hidden",
@@ -169,7 +170,7 @@ export default function MyStore() {
             fontSize: "0.875rem",
           }}>
             <thead>
-              <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+              <tr style={{ backgroundColor: colors.background.hover, borderBottom: `1px solid ${colors.border.default}` }}>
                 <th style={{ textAlign: "left", padding: "0.75rem 1rem", fontWeight: 600 }}>Title</th>
                 <th style={{ textAlign: "left", padding: "0.75rem 1rem", fontWeight: 600 }}>SKU</th>
                 <th style={{ textAlign: "right", padding: "0.75rem 1rem", fontWeight: 600 }}>Price</th>
@@ -182,22 +183,22 @@ export default function MyStore() {
                 product.variants.map((variant, variantIndex) => (
                   <tr
                     key={variant.id}
-                    style={{ borderBottom: "1px solid #e5e7eb" }}
+                    style={{ borderBottom: `1px solid ${colors.border.default}` }}
                   >
                     <td style={{ padding: "0.75rem 1rem" }}>
                       {variantIndex === 0 ? product.title : ''}
                       {product.variants.length > 1 && (
-                        <span style={{ color: "#666", marginLeft: variantIndex === 0 ? "0.5rem" : "0" }}>
+                        <span style={{ color: colors.text.muted, marginLeft: variantIndex === 0 ? "0.5rem" : "0" }}>
                           {variant.title !== 'Default Title' ? variant.title : ''}
                         </span>
                       )}
                       {variantIndex !== 0 && variant.title !== 'Default Title' && (
-                        <span style={{ color: "#666", paddingLeft: "1rem" }}>
+                        <span style={{ color: colors.text.muted, paddingLeft: "1rem" }}>
                           └ {variant.title}
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: "0.75rem 1rem", color: "#666", fontFamily: "monospace" }}>
+                    <td style={{ padding: "0.75rem 1rem", color: colors.text.muted, fontFamily: "monospace" }}>
                       {variant.sku || '—'}
                     </td>
                     <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>
@@ -214,8 +215,8 @@ export default function MyStore() {
                           borderRadius: "9999px",
                           fontSize: "0.75rem",
                           fontWeight: 500,
-                          backgroundColor: product.status === 'ACTIVE' ? '#dcfce7' : '#f3f4f6',
-                          color: product.status === 'ACTIVE' ? '#16a34a' : '#6b7280',
+                          backgroundColor: product.status === 'ACTIVE' ? colors.success.light : colors.background.muted,
+                          color: product.status === 'ACTIVE' ? colors.success.default : colors.text.light,
                         }}>
                           {product.status}
                         </span>
@@ -229,12 +230,12 @@ export default function MyStore() {
         </div>
       ) : !error && (
         <div style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           padding: "3rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           textAlign: "center",
-          color: "#666",
+          color: colors.text.muted,
         }}>
           No products found in the store.
         </div>

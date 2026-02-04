@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect, Link } from "react-router";
+import { colors } from "~/lib/tokens";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -59,13 +60,13 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "2rem 1rem",
     fontFamily:
       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    backgroundColor: "#f4f6f8",
+    backgroundColor: colors.background.page,
   },
   content: {
     maxWidth: "600px",
     width: "100%",
     padding: "2.5rem",
-    backgroundColor: "white",
+    backgroundColor: colors.background.card,
     borderRadius: "8px",
     boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
     textAlign: "center",
@@ -85,37 +86,37 @@ const styles: Record<string, React.CSSProperties> = {
   heading: {
     margin: "0",
     fontSize: "2rem",
-    color: "#202223",
+    color: colors.text.primary,
   },
   tagline: {
     margin: "0.5rem 0 0 0",
     fontSize: "1.125rem",
-    color: "#008060",
+    color: colors.success.shopify,
     fontWeight: 500,
   },
   description: {
     margin: "0 0 1.5rem 0",
     fontSize: "1rem",
-    color: "#6d7175",
+    color: colors.text.light,
     lineHeight: 1.6,
   },
   note: {
     margin: "0 0 2rem 0",
     fontSize: "0.875rem",
-    color: "#8c9196",
+    color: colors.text.lighter,
     lineHeight: 1.5,
   },
   emailLink: {
-    color: "#008060",
+    color: colors.success.shopify,
     textDecoration: "none",
   },
   footer: {
     paddingTop: "1rem",
-    borderTop: "1px solid #e1e3e5",
+    borderTop: `1px solid ${colors.border.default}`,
   },
   link: {
     fontSize: "0.875rem",
-    color: "#6d7175",
+    color: colors.text.light,
     textDecoration: "none",
   },
 };

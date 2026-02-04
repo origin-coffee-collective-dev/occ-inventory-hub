@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, Form, redirect, useNavigation } from "react-router";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
+import { colors } from "~/lib/tokens";
 
 interface LoaderData {
   occStoreDomain: string | null;
@@ -81,9 +82,9 @@ export default function AdminConnectStore() {
       {/* Config Error */}
       {isNotConfigured && (
         <div style={{
-          backgroundColor: "#fef2f2",
-          border: "1px solid #fecaca",
-          color: "#dc2626",
+          backgroundColor: colors.error.light,
+          border: `1px solid ${colors.error.border}`,
+          color: colors.error.text,
           padding: "1rem",
           borderRadius: "8px",
           marginBottom: "1.5rem",
@@ -95,28 +96,28 @@ export default function AdminConnectStore() {
       {/* Connection Status */}
       {!isNotConfigured && (
         <div style={{
-          backgroundColor: isConnected ? "#dcfce7" : status === 'error' ? "#fef2f2" : "#fef3c7",
-          border: `1px solid ${isConnected ? "#86efac" : status === 'error' ? "#fecaca" : "#fcd34d"}`,
+          backgroundColor: isConnected ? colors.success.light : status === 'error' ? colors.error.light : colors.warning.light,
+          border: `1px solid ${isConnected ? colors.success.border : status === 'error' ? colors.error.border : colors.warning.border}`,
           padding: "1rem",
           borderRadius: "8px",
           marginBottom: "1.5rem",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
             <span style={{
-              color: isConnected ? "#16a34a" : status === 'error' ? "#dc2626" : "#d97706",
+              color: isConnected ? colors.success.default : status === 'error' ? colors.error.default : colors.warning.icon,
               fontSize: "1.25rem"
             }}>
               {isConnected ? "✓" : status === 'error' ? "✕" : "○"}
             </span>
             <strong style={{
-              color: isConnected ? "#16a34a" : status === 'error' ? "#dc2626" : "#92400e"
+              color: isConnected ? colors.success.default : status === 'error' ? colors.error.default : colors.warning.text
             }}>
               {isConnected ? "Store Connected" : status === 'error' ? "Connection Error" : "Store Not Connected"}
             </strong>
           </div>
           <p style={{
             margin: 0,
-            color: isConnected ? "#166534" : status === 'error' ? "#991b1b" : "#92400e"
+            color: isConnected ? colors.success.textDark : status === 'error' ? colors.error.textDark : colors.warning.text
           }}>
             {occStoreDomain}
             {isConnected && expiresAt && (
@@ -126,7 +127,7 @@ export default function AdminConnectStore() {
             )}
           </p>
           {loaderError && status === 'error' && (
-            <p style={{ margin: "0.5rem 0 0", fontSize: "0.875rem", color: "#991b1b" }}>
+            <p style={{ margin: "0.5rem 0 0", fontSize: "0.875rem", color: colors.error.textDark }}>
               {loaderError}
             </p>
           )}
@@ -136,12 +137,12 @@ export default function AdminConnectStore() {
       {/* Connect Form */}
       {!isNotConfigured && (
         <div style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           padding: "1.5rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
         }}>
-          <p style={{ marginTop: 0, marginBottom: "1rem", color: "#666" }}>
+          <p style={{ marginTop: 0, marginBottom: "1rem", color: colors.text.muted }}>
             {isConnected
               ? "Store is connected. Click Refresh Token to get a new access token if needed."
               : "Click below to connect to your Shopify store using client credentials. This enables product imports and inventory sync."}
@@ -149,9 +150,9 @@ export default function AdminConnectStore() {
 
           {actionData?.error && (
             <div style={{
-              backgroundColor: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#dc2626",
+              backgroundColor: colors.error.light,
+              border: `1px solid ${colors.error.border}`,
+              color: colors.error.text,
               padding: "1rem",
               borderRadius: "4px",
               marginBottom: "1rem",
@@ -167,8 +168,8 @@ export default function AdminConnectStore() {
               disabled={isSubmitting}
               style={{
                 padding: "0.75rem 1.5rem",
-                backgroundColor: isSubmitting ? "#9ca3af" : "#1a1a1a",
-                color: "white",
+                backgroundColor: isSubmitting ? colors.interactive.disabled : colors.primary.default,
+                color: colors.text.inverse,
                 border: "none",
                 borderRadius: "4px",
                 cursor: isSubmitting ? "not-allowed" : "pointer",
@@ -191,7 +192,7 @@ export default function AdminConnectStore() {
             isLoading={isSubmitting}
           />
 
-          <p style={{ marginTop: "1rem", marginBottom: 0, fontSize: "0.875rem", color: "#666" }}>
+          <p style={{ marginTop: "1rem", marginBottom: 0, fontSize: "0.875rem", color: colors.text.muted }}>
             The app uses client credentials to obtain an access token. No redirect required.
             Tokens are automatically refreshed when they expire.
           </p>
@@ -203,7 +204,7 @@ export default function AdminConnectStore() {
         <a
           href="/admin"
           style={{
-            color: "#2563eb",
+            color: colors.interactive.link,
             textDecoration: "none",
             fontSize: "0.875rem",
           }}

@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData, Link } from "react-router";
 import { getAllPartners, type PartnerRecord } from "~/lib/supabase.server";
+import { colors } from "~/lib/tokens";
 
 interface LoaderData {
   partners: PartnerRecord[];
@@ -28,7 +29,7 @@ export default function AdminPartnersList() {
 
       {/* Active Partners */}
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: colors.background.card,
         padding: "1.5rem",
         borderRadius: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -38,11 +39,11 @@ export default function AdminPartnersList() {
           Active Partners ({activePartners.length})
         </h2>
         {activePartners.length === 0 ? (
-          <p style={{ color: "#666" }}>No active partners yet.</p>
+          <p style={{ color: colors.text.muted }}>No active partners yet.</p>
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+              <tr style={{ borderBottom: `1px solid ${colors.border.default}` }}>
                 <th style={{ textAlign: "left", padding: "0.75rem 0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
                   Shop
                 </th>
@@ -59,19 +60,19 @@ export default function AdminPartnersList() {
             </thead>
             <tbody>
               {activePartners.map(partner => (
-                <tr key={partner.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                <tr key={partner.id} style={{ borderBottom: `1px solid ${colors.border.default}` }}>
                   <td style={{ padding: "0.75rem 0.5rem" }}>
                     <div style={{ fontWeight: 500 }}>
                       {partner.shop.replace('.myshopify.com', '')}
                     </div>
-                    <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                    <div style={{ fontSize: "0.75rem", color: colors.text.muted }}>
                       {partner.shop}
                     </div>
                   </td>
-                  <td style={{ padding: "0.75rem 0.5rem", fontSize: "0.875rem", color: "#666" }}>
+                  <td style={{ padding: "0.75rem 0.5rem", fontSize: "0.875rem", color: colors.text.muted }}>
                     {partner.scope || 'N/A'}
                   </td>
-                  <td style={{ padding: "0.75rem 0.5rem", fontSize: "0.875rem", color: "#666" }}>
+                  <td style={{ padding: "0.75rem 0.5rem", fontSize: "0.875rem", color: colors.text.muted }}>
                     {new Date(partner.created_at).toLocaleDateString()}
                   </td>
                   <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
@@ -80,8 +81,8 @@ export default function AdminPartnersList() {
                       style={{
                         display: "inline-block",
                         padding: "0.5rem 1rem",
-                        backgroundColor: "#1a1a1a",
-                        color: "white",
+                        backgroundColor: colors.primary.default,
+                        color: colors.text.inverse,
                         textDecoration: "none",
                         borderRadius: "4px",
                         fontSize: "0.875rem",
@@ -100,7 +101,7 @@ export default function AdminPartnersList() {
       {/* Inactive Partners */}
       {inactivePartners.length > 0 && (
         <div style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           padding: "1.5rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -110,7 +111,7 @@ export default function AdminPartnersList() {
           </h2>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+              <tr style={{ borderBottom: `1px solid ${colors.border.default}` }}>
                 <th style={{ textAlign: "left", padding: "0.75rem 0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
                   Shop
                 </th>
@@ -124,16 +125,16 @@ export default function AdminPartnersList() {
             </thead>
             <tbody>
               {inactivePartners.map(partner => (
-                <tr key={partner.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                <tr key={partner.id} style={{ borderBottom: `1px solid ${colors.border.default}` }}>
                   <td style={{ padding: "0.75rem 0.5rem" }}>
-                    <div style={{ fontWeight: 500, color: "#666" }}>
+                    <div style={{ fontWeight: 500, color: colors.text.muted }}>
                       {partner.shop.replace('.myshopify.com', '')}
                     </div>
                   </td>
                   <td style={{ padding: "0.75rem 0.5rem" }}>
                     <span style={{
-                      backgroundColor: partner.is_deleted ? "#fef2f2" : "#fefce8",
-                      color: partner.is_deleted ? "#dc2626" : "#ca8a04",
+                      backgroundColor: partner.is_deleted ? colors.error.light : colors.warning.light,
+                      color: partner.is_deleted ? colors.error.default : colors.warning.text,
                       padding: "0.25rem 0.75rem",
                       borderRadius: "9999px",
                       fontSize: "0.75rem",
@@ -142,7 +143,7 @@ export default function AdminPartnersList() {
                       {partner.is_deleted ? "Deleted" : "Inactive"}
                     </span>
                   </td>
-                  <td style={{ padding: "0.75rem 0.5rem", fontSize: "0.875rem", color: "#666" }}>
+                  <td style={{ padding: "0.75rem 0.5rem", fontSize: "0.875rem", color: colors.text.muted }}>
                     {partner.deleted_at
                       ? new Date(partner.deleted_at).toLocaleDateString()
                       : new Date(partner.updated_at).toLocaleDateString()}

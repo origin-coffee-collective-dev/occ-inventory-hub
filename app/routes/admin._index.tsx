@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { getAllPartners, type PartnerRecord } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
+import { colors } from "~/lib/tokens";
 
 interface LoaderData {
   partners: PartnerRecord[];
@@ -125,14 +126,14 @@ export default function AdminDashboard() {
   const getStatusStyles = () => {
     switch (ownerStoreStatus) {
       case 'connected':
-        return { bg: "#dcfce7", border: "#86efac", color: "#16a34a", icon: "✓" };
+        return { bg: colors.success.light, border: colors.success.border, color: colors.success.default, icon: "✓" };
       case 'expired':
-        return { bg: "#fef3c7", border: "#fcd34d", color: "#d97706", icon: "○" };
+        return { bg: colors.warning.light, border: colors.warning.border, color: colors.warning.icon, icon: "○" };
       case 'error':
-        return { bg: "#fef2f2", border: "#fecaca", color: "#dc2626", icon: "✕" };
+        return { bg: colors.error.light, border: colors.error.border, color: colors.error.default, icon: "✕" };
       case 'not_configured':
       default:
-        return { bg: "#f3f4f6", border: "#d1d5db", color: "#6b7280", icon: "○" };
+        return { bg: colors.background.muted, border: colors.border.strong, color: colors.text.light, icon: "○" };
     }
   };
 
@@ -147,9 +148,9 @@ export default function AdminDashboard() {
       {/* Success Message */}
       {storeJustConnected && (
         <div style={{
-          backgroundColor: "#dcfce7",
-          border: "1px solid #86efac",
-          color: "#16a34a",
+          backgroundColor: colors.success.light,
+          border: `1px solid ${colors.success.border}`,
+          color: colors.success.default,
           padding: "1rem",
           borderRadius: "8px",
           marginBottom: "1.5rem",
@@ -160,7 +161,7 @@ export default function AdminDashboard() {
 
       {/* Parent Store Connection */}
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: colors.background.card,
         padding: "1.5rem",
         borderRadius: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -186,7 +187,7 @@ export default function AdminDashboard() {
                   Connected
                 </span>
               </div>
-              <div style={{ fontSize: "0.875rem", color: "#666" }}>
+              <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
                 Token expires in: {formatExpiresAt(tokenExpiresAt) || "N/A"}
               </div>
             </div>
@@ -195,8 +196,8 @@ export default function AdminDashboard() {
               onClick={() => setShowRefreshModal(true)}
               style={{
                 padding: "0.5rem 1rem",
-                backgroundColor: "#f3f4f6",
-                color: "#374151",
+                backgroundColor: colors.background.muted,
+                color: colors.text.secondary,
                 border: "none",
                 borderRadius: "4px",
                 fontSize: "0.875rem",
@@ -213,7 +214,7 @@ export default function AdminDashboard() {
                 <span style={{ color: statusStyles.color, fontSize: "1.25rem" }}>{statusStyles.icon}</span>
                 <span style={{ fontWeight: 500, color: statusStyles.color }}>Connection Error</span>
               </div>
-              <div style={{ fontSize: "0.875rem", color: "#666" }}>
+              <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
                 {ownerStoreError || "Failed to connect to store"}
               </div>
             </div>
@@ -222,8 +223,8 @@ export default function AdminDashboard() {
               onClick={() => setShowRefreshModal(true)}
               style={{
                 padding: "0.75rem 1.5rem",
-                backgroundColor: "#1a1a1a",
-                color: "white",
+                backgroundColor: colors.primary.default,
+                color: colors.text.inverse,
                 border: "none",
                 borderRadius: "4px",
                 fontSize: "0.875rem",
@@ -238,12 +239,12 @@ export default function AdminDashboard() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-                <span style={{ color: "#f59e0b", fontSize: "1.25rem" }}>⚠</span>
-                <span style={{ fontWeight: 500, color: "#92400e" }}>
+                <span style={{ color: colors.warning.default, fontSize: "1.25rem" }}>⚠</span>
+                <span style={{ fontWeight: 500, color: colors.warning.text }}>
                   {ownerStoreStatus === 'not_configured' ? 'Store not configured' : 'Parent store not connected'}
                 </span>
               </div>
-              <div style={{ fontSize: "0.875rem", color: "#666" }}>
+              <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
                 {ownerStoreStatus === 'not_configured'
                   ? 'OCC_STORE_DOMAIN environment variable is not set.'
                   : 'Connect your Shopify store to enable product imports.'}
@@ -254,8 +255,8 @@ export default function AdminDashboard() {
               style={{
                 display: "inline-block",
                 padding: "0.75rem 1.5rem",
-                backgroundColor: "#1a1a1a",
-                color: "white",
+                backgroundColor: colors.primary.default,
+                color: colors.text.inverse,
                 textDecoration: "none",
                 borderRadius: "4px",
                 fontSize: "0.875rem",
@@ -272,12 +273,12 @@ export default function AdminDashboard() {
       {/* Stats Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
         <div style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           padding: "1.5rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
         }}>
-          <div style={{ fontSize: "0.875rem", color: "#666", marginBottom: "0.5rem" }}>
+          <div style={{ fontSize: "0.875rem", color: colors.text.muted, marginBottom: "0.5rem" }}>
             Active Partners
           </div>
           <div style={{ fontSize: "2rem", fontWeight: 600 }}>
@@ -286,12 +287,12 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{
-          backgroundColor: "white",
+          backgroundColor: colors.background.card,
           padding: "1.5rem",
           borderRadius: "8px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
         }}>
-          <div style={{ fontSize: "0.875rem", color: "#666", marginBottom: "0.5rem" }}>
+          <div style={{ fontSize: "0.875rem", color: colors.text.muted, marginBottom: "0.5rem" }}>
             Total Partners
           </div>
           <div style={{ fontSize: "2rem", fontWeight: 600 }}>
@@ -302,7 +303,7 @@ export default function AdminDashboard() {
 
       {/* Quick Actions */}
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: colors.background.card,
         padding: "1.5rem",
         borderRadius: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -317,8 +318,8 @@ export default function AdminDashboard() {
             style={{
               display: "inline-block",
               padding: "0.75rem 1.5rem",
-              backgroundColor: "#1a1a1a",
-              color: "white",
+              backgroundColor: colors.primary.default,
+              color: colors.text.inverse,
               textDecoration: "none",
               borderRadius: "4px",
               fontSize: "0.875rem",
@@ -332,8 +333,8 @@ export default function AdminDashboard() {
             style={{
               display: "inline-block",
               padding: "0.75rem 1.5rem",
-              backgroundColor: "#f3f4f6",
-              color: "#374151",
+              backgroundColor: colors.background.muted,
+              color: colors.text.secondary,
               textDecoration: "none",
               borderRadius: "4px",
               fontSize: "0.875rem",
@@ -347,7 +348,7 @@ export default function AdminDashboard() {
 
       {/* Recent Partners */}
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: colors.background.card,
         padding: "1.5rem",
         borderRadius: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -356,7 +357,7 @@ export default function AdminDashboard() {
           Active Partners
         </h2>
         {activePartners.length === 0 ? (
-          <p style={{ color: "#666" }}>No active partners yet.</p>
+          <p style={{ color: colors.text.muted }}>No active partners yet.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {activePartners.slice(0, 5).map(partner => (
@@ -368,7 +369,7 @@ export default function AdminDashboard() {
                   justifyContent: "space-between",
                   alignItems: "center",
                   padding: "0.75rem 1rem",
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${colors.border.default}`,
                   borderRadius: "4px",
                   textDecoration: "none",
                   color: "inherit",
@@ -378,13 +379,13 @@ export default function AdminDashboard() {
                   <div style={{ fontWeight: 500 }}>
                     {partner.shop.replace('.myshopify.com', '')}
                   </div>
-                  <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                  <div style={{ fontSize: "0.75rem", color: colors.text.muted }}>
                     Connected {new Date(partner.created_at).toLocaleDateString()}
                   </div>
                 </div>
                 <div style={{
-                  backgroundColor: "#dcfce7",
-                  color: "#16a34a",
+                  backgroundColor: colors.success.light,
+                  color: colors.success.default,
                   padding: "0.25rem 0.75rem",
                   borderRadius: "9999px",
                   fontSize: "0.75rem",
@@ -397,7 +398,7 @@ export default function AdminDashboard() {
             {activePartners.length > 5 && (
               <Link
                 to="/admin/partners"
-                style={{ color: "#2563eb", fontSize: "0.875rem", textAlign: "center" }}
+                style={{ color: colors.interactive.link, fontSize: "0.875rem", textAlign: "center" }}
               >
                 View all {activePartners.length} partners
               </Link>

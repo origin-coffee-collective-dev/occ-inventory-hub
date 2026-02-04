@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { redirect, useActionData, useNavigation, useSearchParams } from "react-router";
 import { signInAdmin, verifyAdminSession, ADMIN_SESSION_COOKIE } from "~/lib/supabase.server";
+import { colors } from "~/lib/tokens";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Check if already logged in
@@ -71,11 +72,11 @@ export default function AdminLogin() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "#f6f6f7",
+      backgroundColor: colors.background.subtle,
       fontFamily: "system-ui, sans-serif",
     }}>
       <div style={{
-        backgroundColor: "white",
+        backgroundColor: colors.background.card,
         padding: "2rem",
         borderRadius: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
@@ -85,15 +86,15 @@ export default function AdminLogin() {
         <h1 style={{ margin: "0 0 1.5rem", textAlign: "center", fontSize: "1.5rem" }}>
           OCC Inventory Hub
         </h1>
-        <h2 style={{ margin: "0 0 1.5rem", textAlign: "center", fontSize: "1rem", fontWeight: "normal", color: "#666" }}>
+        <h2 style={{ margin: "0 0 1.5rem", textAlign: "center", fontSize: "1rem", fontWeight: "normal", color: colors.text.muted }}>
           Admin Login
         </h2>
 
         {actionData?.error && (
           <div style={{
-            backgroundColor: "#fef2f2",
-            border: "1px solid #fecaca",
-            color: "#dc2626",
+            backgroundColor: colors.error.light,
+            border: `1px solid ${colors.error.border}`,
+            color: colors.error.text,
             padding: "0.75rem 1rem",
             borderRadius: "4px",
             marginBottom: "1rem",
@@ -122,7 +123,7 @@ export default function AdminLogin() {
               style={{
                 width: "100%",
                 padding: "0.75rem",
-                border: "1px solid #d1d5db",
+                border: `1px solid ${colors.border.strong}`,
                 borderRadius: "4px",
                 fontSize: "1rem",
                 boxSizing: "border-box",
@@ -146,7 +147,7 @@ export default function AdminLogin() {
               style={{
                 width: "100%",
                 padding: "0.75rem",
-                border: "1px solid #d1d5db",
+                border: `1px solid ${colors.border.strong}`,
                 borderRadius: "4px",
                 fontSize: "1rem",
                 boxSizing: "border-box",
@@ -160,8 +161,8 @@ export default function AdminLogin() {
             style={{
               width: "100%",
               padding: "0.75rem",
-              backgroundColor: isSubmitting ? "#9ca3af" : "#1a1a1a",
-              color: "white",
+              backgroundColor: isSubmitting ? colors.interactive.disabled : colors.primary.default,
+              color: colors.text.inverse,
               border: "none",
               borderRadius: "4px",
               fontSize: "1rem",

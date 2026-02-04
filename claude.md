@@ -163,6 +163,7 @@ occ-inventory-hub/
 
 | File | Purpose |
 |------|---------|
+| `app/lib/tokens.ts` | **Design tokens** - centralized color constants (MUST use for all colors) |
 | `app/lib/utils/price.ts` | Margin markup calculations (default 30%) |
 | `app/lib/utils/sku.ts` | Partner SKU generation/parsing (`PARTNER-{shop}-{sku}`) |
 | `app/lib/partners/sync.server.ts` | Partner record upsert on app load |
@@ -300,13 +301,21 @@ npm run lint       # Must pass with zero errors
 
 ---
 
-## Design Tokens
+## Design Tokens (MANDATORY)
 
-**NEVER use magic hex color codes in components.** Always use the centralized color tokens from `~/lib/tokens.ts`.
+**⚠️ CRITICAL: ALL styling colors MUST use design tokens. This is NOT optional.**
 
-**Bad:**
+**NEVER use magic hex color codes in components.** Always use the centralized color tokens from `~/lib/tokens.ts`. This includes:
+- Background colors
+- Text colors
+- Border colors
+- Status colors (success, error, warning, info)
+- Interactive colors (links, buttons, disabled states)
+
+**Bad (WILL BE REJECTED):**
 ```typescript
 style={{ color: "#dc2626", backgroundColor: "#f3f4f6" }}
+style={{ borderBottom: "1px solid #e5e7eb" }}
 ```
 
 **Good:**
@@ -314,19 +323,20 @@ style={{ color: "#dc2626", backgroundColor: "#f3f4f6" }}
 import { colors } from "~/lib/tokens";
 
 style={{ color: colors.error.default, backgroundColor: colors.background.muted }}
+style={{ borderBottom: `1px solid ${colors.border.default}` }}
 ```
 
 ### Available Token Categories
 
 | Category | Usage |
 |----------|-------|
-| `colors.primary` | Brand/primary button colors |
-| `colors.text` | Text colors (primary, secondary, muted, disabled, inverse) |
-| `colors.background` | Background colors (page, card, muted, hover) |
+| `colors.primary` | Brand/primary button colors (default, hover, text) |
+| `colors.text` | Text colors (primary, secondary, tertiary, muted, light, lighter, disabled, inverse) |
+| `colors.background` | Background colors (page, card, subtle, muted, hover) |
 | `colors.border` | Border colors (default, strong) |
-| `colors.success` | Success states (default, hover, light, text) |
-| `colors.error` | Error/danger states (default, hover, light, border, text) |
-| `colors.warning` | Warning states (default, light, border, text) |
+| `colors.success` | Success states (default, hover, light, border, text, textDark, shopify) |
+| `colors.error` | Error/danger states (default, hover, light, border, text, textDark, shopify) |
+| `colors.warning` | Warning states (default, icon, light, border, text) |
 | `colors.info` | Info states (default, light, text) |
 | `colors.interactive` | Interactive elements (link, linkHover, disabled) |
 | `colors.icon` | Icon colors (default, muted) |
@@ -337,6 +347,15 @@ If you need a color that doesn't exist in tokens:
 1. **First**, check if an existing token can be used semantically
 2. **If not**, add the new color to `app/lib/tokens.ts` with a semantic name
 3. **Never** add raw hex codes directly to components
+
+### Verifying Token Usage
+
+Before committing, verify no hex codes exist in your changes:
+```bash
+grep -r "#[0-9a-fA-F]\{6\}" app/routes/ app/components/
+```
+
+This should return no results. If it does, replace those hex codes with tokens.
 
 ---
 
