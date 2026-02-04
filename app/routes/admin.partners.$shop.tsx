@@ -43,6 +43,21 @@ interface ActionData {
   newCount?: number;
   updatedCount?: number;
   importedProductId?: string;
+  // Bulk import specific fields
+  succeeded?: number;
+  failed?: Array<{ title: string; variantId: string; error: string }>;
+  // Debug info for inventory tracking
+  inventoryDebug?: {
+    inputs: { inventoryItemId: string | undefined; locationId: string | null | undefined; partnerInventoryQty: number };
+    tracking?: { status: number; ok: boolean; body: unknown; inventoryItem: unknown; tracked: boolean | undefined };
+    quantity?: { status: number; ok: boolean; body: unknown };
+    skipped?: string;
+  };
+}
+
+interface BulkImportResult {
+  succeeded: number;
+  failed: Array<{ title: string; variantId: string; error: string }>;
 }
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
@@ -394,6 +409,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const locationId = tokenResult.locationId;
       const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
 
+      // DEBUG: Collect debug info to return in response
+      const inventoryDebug: {
+        inputs: { inventoryItemId: string | undefined; locationId: string | null | undefined; partnerInventoryQty: number };
+        tracking?: { status: number; ok: boolean; body: unknown; inventoryItem: unknown; tracked: boolean | undefined };
+        quantity?: { status: number; ok: boolean; body: unknown };
+        skipped?: string;
+      } = {
+        inputs: { inventoryItemId, locationId, partnerInventoryQty },
+      };
+
+      // DEBUG: Log the values we're working with
+      console.log("=== INVENTORY DEBUG ===");
+      console.log("inventoryItemId:", inventoryItemId);
+      console.log("locationId:", locationId);
+      console.log("partnerInventoryQty:", partnerInventoryQty);
+
       if (inventoryItemId && locationId) {
         // Step 1: Enable inventory tracking
         const trackingResponse = await fetch(
@@ -414,12 +445,37 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           }
         );
 
-        if (trackingResponse.ok) {
-          const trackingResult = await trackingResponse.json() as {
-            data: InventoryItemUpdateResult | null;
-            errors?: Array<{ message: string }>;
-          };
+        // DEBUG: Log the raw response
+        const trackingResponseText = await trackingResponse.text();
+        console.log("trackingResponse.ok:", trackingResponse.ok);
+        console.log("trackingResponse.status:", trackingResponse.status);
+        console.log("trackingResponse body:", trackingResponseText);
 
+        // Parse the response (we already consumed the body, so parse from text)
+        const trackingResult = JSON.parse(trackingResponseText) as {
+          data: InventoryItemUpdateResult | null;
+          errors?: Array<{ message: string }>;
+        };
+
+        // DEBUG: Log the parsed result
+        console.log("trackingResult.data:", JSON.stringify(trackingResult.data, null, 2));
+        console.log("trackingResult.errors:", trackingResult.errors);
+
+        // Check if inventoryItem was actually returned and tracked is true
+        const inventoryItem = trackingResult.data?.inventoryItemUpdate?.inventoryItem;
+        console.log("inventoryItem returned:", inventoryItem);
+        console.log("tracked value:", inventoryItem?.tracked);
+
+        // Store debug info
+        inventoryDebug.tracking = {
+          status: trackingResponse.status,
+          ok: trackingResponse.ok,
+          body: trackingResult,
+          inventoryItem: inventoryItem,
+          tracked: inventoryItem?.tracked,
+        };
+
+        if (trackingResponse.ok) {
           // Check for GraphQL-level errors
           if (trackingResult.errors && trackingResult.errors.length > 0) {
             console.error("Inventory tracking GraphQL errors:", trackingResult.errors);
@@ -458,12 +514,24 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             }
           );
 
-          if (quantityResponse.ok) {
-            const quantityResult = await quantityResponse.json() as {
-              data: InventorySetQuantitiesResult | null;
-              errors?: Array<{ message: string }>;
-            };
+          // DEBUG: Log quantity response
+          const quantityResponseText = await quantityResponse.text();
+          console.log("quantityResponse.ok:", quantityResponse.ok);
+          console.log("quantityResponse.status:", quantityResponse.status);
+          console.log("quantityResponse body:", quantityResponseText);
 
+          const quantityResult = JSON.parse(quantityResponseText) as {
+            data: InventorySetQuantitiesResult | null;
+            errors?: Array<{ message: string }>;
+          };
+
+          inventoryDebug.quantity = {
+            status: quantityResponse.status,
+            ok: quantityResponse.ok,
+            body: quantityResult,
+          };
+
+          if (quantityResponse.ok) {
             // Check for GraphQL-level errors
             if (quantityResult.errors && quantityResult.errors.length > 0) {
               console.error("Inventory quantity GraphQL errors:", quantityResult.errors);
@@ -474,14 +542,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               }
             }
           } else {
-            console.error("Failed to set inventory quantity:", await quantityResponse.text());
+            console.error("Failed to set inventory quantity:", quantityResponseText);
           }
         } else {
-          console.error("Failed to enable inventory tracking:", await trackingResponse.text());
+          console.error("Failed to enable inventory tracking:", trackingResponseText);
         }
       } else {
         console.warn("Skipping inventory setup: missing inventoryItemId or locationId");
+        inventoryDebug.skipped = `inventoryItemId=${inventoryItemId}, locationId=${locationId}`;
       }
+
+      // DEBUG: Log final summary
+      console.log("=== INVENTORY DEBUG SUMMARY ===");
+      console.log(JSON.stringify(inventoryDebug, null, 2));
 
       // Create product mapping
       const { error: mappingError } = await createProductMapping({
@@ -510,6 +583,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         intent,
         message: `Imported "${cachedProduct.title}" at $${formatPrice(myPrice)}`,
         importedProductId: createdProduct.id,
+        inventoryDebug,
       } satisfies ActionData);
     } catch (error) {
       console.error("Import error:", error);
@@ -519,6 +593,270 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         error: "Failed to import product",
       } satisfies ActionData);
     }
+  }
+
+  // BULK-IMPORT: Create multiple products on OCC's store sequentially
+  if (intent === "bulk-import") {
+    const productsJson = formData.get("products") as string;
+
+    if (!productsJson) {
+      return Response.json({
+        success: false,
+        intent,
+        error: "Missing products data",
+      } satisfies ActionData);
+    }
+
+    let productsToImport: Array<{ variantId: string; sellingPrice: string }>;
+    try {
+      productsToImport = JSON.parse(productsJson);
+    } catch {
+      return Response.json({
+        success: false,
+        intent,
+        error: "Invalid products data format",
+      } satisfies ActionData);
+    }
+
+    if (!Array.isArray(productsToImport) || productsToImport.length === 0) {
+      return Response.json({
+        success: false,
+        intent,
+        error: "No products to import",
+      } satisfies ActionData);
+    }
+
+    // Get owner store credentials (auto-refreshes token if needed)
+    const tokenResult = await getValidOwnerStoreToken();
+
+    if (tokenResult.status !== 'connected' || !tokenResult.accessToken) {
+      return Response.json({
+        success: false,
+        intent,
+        error: tokenResult.error || "Parent store not connected. Please connect your store from the dashboard.",
+      } satisfies ActionData);
+    }
+
+    const occStoreDomain = tokenResult.shop!;
+    const occStoreToken = tokenResult.accessToken;
+    const locationId = tokenResult.locationId;
+
+    // Get all cached products for this partner
+    const { data: cachedProducts } = await getPartnerProducts(partnerShop);
+    const cachedProductMap = new Map(cachedProducts.map(p => [p.partner_variant_id, p]));
+
+    // Pre-validate all products
+    const validationErrors: Array<{ title: string; variantId: string; error: string }> = [];
+    const validProducts: Array<{
+      variantId: string;
+      sellingPrice: string;
+      cachedProduct: (typeof cachedProducts)[0];
+    }> = [];
+
+    for (const item of productsToImport) {
+      const cachedProduct = cachedProductMap.get(item.variantId);
+      if (!cachedProduct) {
+        validationErrors.push({
+          title: `Unknown (${item.variantId})`,
+          variantId: item.variantId,
+          error: "Product not found in cache",
+        });
+        continue;
+      }
+
+      const price = parseFloat(item.sellingPrice);
+      if (isNaN(price) || price <= 0) {
+        validationErrors.push({
+          title: cachedProduct.title,
+          variantId: item.variantId,
+          error: "Invalid price",
+        });
+        continue;
+      }
+
+      validProducts.push({ variantId: item.variantId, sellingPrice: item.sellingPrice, cachedProduct });
+    }
+
+    // Process valid products sequentially
+    let succeeded = 0;
+    const failed = [...validationErrors];
+
+    for (const { variantId, sellingPrice, cachedProduct } of validProducts) {
+      try {
+        const myPrice = parseFloat(sellingPrice);
+        const partnerPrice = cachedProduct.price;
+        const margin = calculateMargin(partnerPrice, myPrice);
+        const mySku = generatePartnerSku(partnerShop, cachedProduct.sku || cachedProduct.partner_variant_id);
+
+        // Create product on OCC's store
+        const productInput = buildProductSetInput({
+          title: cachedProduct.title,
+          vendor: partnerShop.replace('.myshopify.com', ''),
+          sku: mySku,
+          price: formatPrice(myPrice),
+          status: 'ACTIVE',
+          imageUrl: cachedProduct.image_url || undefined,
+        });
+
+        const response = await fetch(
+          `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Access-Token': occStoreToken,
+            },
+            body: JSON.stringify({
+              query: PRODUCT_SET_MUTATION,
+              variables: {
+                input: productInput,
+                synchronous: true,
+              },
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          failed.push({
+            title: cachedProduct.title,
+            variantId,
+            error: "API request failed",
+          });
+          continue;
+        }
+
+        const result = await response.json() as {
+          data: ProductSetResult | null;
+          errors?: Array<{ message: string }>;
+        };
+
+        if (result.errors && result.errors.length > 0) {
+          failed.push({
+            title: cachedProduct.title,
+            variantId,
+            error: result.errors.map(e => e.message).join(", "),
+          });
+          continue;
+        }
+
+        if (!result.data?.productSet?.product) {
+          failed.push({
+            title: cachedProduct.title,
+            variantId,
+            error: result.data?.productSet?.userErrors?.map(e => e.message).join(", ") || "Unknown error",
+          });
+          continue;
+        }
+
+        const createdProduct = result.data.productSet.product;
+        const createdVariant = createdProduct.variants.edges[0]?.node;
+
+        if (!createdVariant) {
+          failed.push({
+            title: cachedProduct.title,
+            variantId,
+            error: "Variant creation failed",
+          });
+          continue;
+        }
+
+        // Setup inventory tracking (non-blocking - don't fail the import if this fails)
+        const inventoryItemId = createdVariant.inventoryItem?.id;
+        const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
+
+        if (inventoryItemId && locationId) {
+          try {
+            // Enable tracking
+            await fetch(
+              `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Shopify-Access-Token': occStoreToken,
+                },
+                body: JSON.stringify({
+                  query: INVENTORY_ITEM_UPDATE,
+                  variables: {
+                    id: inventoryItemId,
+                    input: { tracked: true },
+                  },
+                }),
+              }
+            );
+
+            // Set quantity
+            await fetch(
+              `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Shopify-Access-Token': occStoreToken,
+                },
+                body: JSON.stringify({
+                  query: INVENTORY_SET_QUANTITIES,
+                  variables: {
+                    input: {
+                      name: "available",
+                      reason: "correction",
+                      quantities: [
+                        {
+                          inventoryItemId,
+                          locationId,
+                          quantity: partnerInventoryQty,
+                        },
+                      ],
+                    },
+                  },
+                }),
+              }
+            );
+          } catch (invError) {
+            console.error("Inventory setup error for bulk import:", invError);
+          }
+        }
+
+        // Create product mapping
+        await createProductMapping({
+          partnerId: partner.id,
+          partnerShop,
+          partnerProductId: cachedProduct.partner_product_id,
+          partnerVariantId: cachedProduct.partner_variant_id,
+          myProductId: createdProduct.id,
+          myVariantId: createdVariant.id,
+          partnerSku: cachedProduct.sku,
+          mySku,
+          partnerPrice,
+          myPrice,
+          margin,
+        });
+
+        // Mark product as seen
+        await markPartnerProductSeen(partnerShop, variantId);
+
+        succeeded++;
+
+        // Small delay between API calls to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Bulk import error for ${cachedProduct.title}:`, error);
+        failed.push({
+          title: cachedProduct.title,
+          variantId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    const total = productsToImport.length;
+    return Response.json({
+      success: succeeded > 0,
+      intent,
+      message: `Imported ${succeeded} of ${total} products`,
+      succeeded,
+      failed,
+    } satisfies ActionData);
   }
 
   // UNLINK: Remove the product mapping (mark as no longer imported)
@@ -574,7 +912,37 @@ export default function AdminPartnerProducts() {
   // Track which product is selected for the detail modal
   const [selectedProduct, setSelectedProduct] = useState<(PartnerProductRecord & { isImported: boolean; myPrice: number | null }) | null>(null);
 
+  // Bulk import selection state
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [bulkImportResult, setBulkImportResult] = useState<BulkImportResult | null>(null);
+
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+
+  // Filter products by search query (title or SKU)
+  const filterBySearch = (productList: typeof products) => {
+    if (!searchQuery.trim()) return productList;
+    const query = searchQuery.toLowerCase().trim();
+    return productList.filter(
+      (p) =>
+        p.title.toLowerCase().includes(query) ||
+        (p.sku && p.sku.toLowerCase().includes(query))
+    );
+  };
+
+  // Filter products into three groups for tabs (before search)
+  const allImportedProducts = products.filter(p => p.isImported && !p.is_deleted);
+  const allAvailableProducts = products.filter(p => !p.isImported && !p.is_deleted);
+  const allUnavailableProducts = products.filter(p => p.is_deleted);
+
+  // Apply search filter to each group
+  const importedProducts = filterBySearch(allImportedProducts);
+  const availableProducts = filterBySearch(allAvailableProducts);
+  const unavailableProducts = filterBySearch(allUnavailableProducts);
+
+  // Calculate totals for result count display
+  const totalFilteredProducts = importedProducts.length + availableProducts.length + unavailableProducts.length;
+  const totalAllProducts = allImportedProducts.length + allAvailableProducts.length + allUnavailableProducts.length;
+  const isSearchActive = searchQuery.trim().length > 0;
 
   // Format the last synced time
   const formatLastSynced = (isoString: string | null) => {
@@ -643,14 +1011,120 @@ export default function AdminPartnerProducts() {
     setSelectedProduct(null);
   };
 
-  // Filter products by search query (title or SKU)
-  const filterBySearch = (productList: typeof products) => {
-    if (!searchQuery.trim()) return productList;
-    const query = searchQuery.toLowerCase().trim();
-    return productList.filter(
-      (p) =>
-        p.title.toLowerCase().includes(query) ||
-        (p.sku && p.sku.toLowerCase().includes(query))
+  // Bulk import selection handlers
+  const handleSelectProduct = (variantId: string) => {
+    setSelectedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(variantId)) {
+        next.delete(variantId);
+      } else {
+        next.add(variantId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    // Get all available product variant IDs (after search filter)
+    const availableVariantIds = availableProducts.map(p => p.partner_variant_id);
+    const allSelected = availableVariantIds.every(id => selectedProducts.has(id));
+
+    if (allSelected) {
+      // Deselect all
+      setSelectedProducts(prev => {
+        const next = new Set(prev);
+        availableVariantIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      // Select all
+      setSelectedProducts(prev => {
+        const next = new Set(prev);
+        availableVariantIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedProducts(new Set());
+  };
+
+  // Get count of selected products that have valid prices
+  const getImportableCount = () => {
+    return Array.from(selectedProducts).filter(variantId => {
+      const price = priceInputs[variantId];
+      return price && parseFloat(price) > 0;
+    }).length;
+  };
+
+  const handleBulkImport = () => {
+    const productsToImport = Array.from(selectedProducts)
+      .filter(variantId => {
+        const price = priceInputs[variantId];
+        return price && parseFloat(price) > 0;
+      })
+      .map(variantId => ({
+        variantId,
+        sellingPrice: priceInputs[variantId],
+      }));
+
+    if (productsToImport.length === 0) {
+      toast.error("No products with valid prices selected");
+      return;
+    }
+
+    submit(
+      {
+        intent: "bulk-import",
+        products: JSON.stringify(productsToImport),
+      },
+      { method: "post" }
+    );
+  };
+
+  const handleBulkResultClose = () => {
+    setBulkImportResult(null);
+    // Clear selection for successfully imported products
+    if (bulkImportResult) {
+      const failedIds = new Set(bulkImportResult.failed.map(f => f.variantId));
+      setSelectedProducts(prev => {
+        const next = new Set<string>();
+        prev.forEach(id => {
+          if (failedIds.has(id)) {
+            next.add(id);
+          }
+        });
+        return next;
+      });
+    }
+  };
+
+  const handleRetryFailed = () => {
+    if (!bulkImportResult || bulkImportResult.failed.length === 0) return;
+
+    const productsToRetry = bulkImportResult.failed
+      .filter(({ variantId }) => {
+        const price = priceInputs[variantId];
+        return price && parseFloat(price) > 0;
+      })
+      .map(({ variantId }) => ({
+        variantId,
+        sellingPrice: priceInputs[variantId],
+      }));
+
+    if (productsToRetry.length === 0) {
+      toast.error("No failed products with valid prices to retry");
+      return;
+    }
+
+    setBulkImportResult(null);
+    submit(
+      {
+        intent: "bulk-import",
+        products: JSON.stringify(productsToRetry),
+      },
+      { method: "post" }
     );
   };
 
@@ -660,27 +1134,36 @@ export default function AdminPartnerProducts() {
 
   // Show toast when action completes
   useEffect(() => {
-    if (actionData?.success && actionData?.message) {
+    if (actionData?.intent === "bulk-import") {
+      // Handle bulk import results
+      if (actionData.succeeded !== undefined && actionData.failed !== undefined) {
+        setBulkImportResult({
+          succeeded: actionData.succeeded,
+          failed: actionData.failed,
+        });
+      }
+    } else if (actionData?.success && actionData?.message) {
       toast.success(actionData.message);
     } else if (!actionData?.success && actionData?.error) {
       toast.error(actionData.error);
     }
+
+    // DEBUG: Log inventory debug info to browser console
+    if (actionData?.inventoryDebug) {
+      console.log("=== INVENTORY DEBUG (from server) ===");
+      console.log("Inputs:", actionData.inventoryDebug.inputs);
+      if (actionData.inventoryDebug.tracking) {
+        console.log("Tracking Response:", actionData.inventoryDebug.tracking);
+      }
+      if (actionData.inventoryDebug.quantity) {
+        console.log("Quantity Response:", actionData.inventoryDebug.quantity);
+      }
+      if (actionData.inventoryDebug.skipped) {
+        console.log("Skipped:", actionData.inventoryDebug.skipped);
+      }
+      console.log("Full debug object:", JSON.stringify(actionData.inventoryDebug, null, 2));
+    }
   }, [actionData]);
-
-  // Filter products into three groups for tabs (before search)
-  const allImportedProducts = products.filter(p => p.isImported && !p.is_deleted);
-  const allAvailableProducts = products.filter(p => !p.isImported && !p.is_deleted);
-  const allUnavailableProducts = products.filter(p => p.is_deleted);
-
-  // Apply search filter to each group
-  const importedProducts = filterBySearch(allImportedProducts);
-  const availableProducts = filterBySearch(allAvailableProducts);
-  const unavailableProducts = filterBySearch(allUnavailableProducts);
-
-  // Calculate totals for result count display
-  const totalFilteredProducts = importedProducts.length + availableProducts.length + unavailableProducts.length;
-  const totalAllProducts = allImportedProducts.length + allAvailableProducts.length + allUnavailableProducts.length;
-  const isSearchActive = searchQuery.trim().length > 0;
 
   return (
     <div>
@@ -918,6 +1401,75 @@ export default function AdminPartnerProducts() {
         </div>
       )}
 
+      {/* Bulk Action Bar - Available tab only */}
+      {activeTab === "available" && availableProducts.length > 0 && (
+        <div style={{
+          backgroundColor: colors.background.subtle,
+          padding: "0.75rem 1rem",
+          borderRadius: "4px",
+          marginBottom: "1rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          border: `1px solid ${colors.border.default}`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={availableProducts.length > 0 && availableProducts.every(p => selectedProducts.has(p.partner_variant_id))}
+                onChange={handleSelectAll}
+                style={{ width: "18px", height: "18px", cursor: "pointer" }}
+              />
+              <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>
+                Select All ({availableProducts.length})
+              </span>
+            </label>
+            {selectedProducts.size > 0 && (
+              <button
+                onClick={handleClearSelection}
+                style={{
+                  padding: "0.25rem 0.5rem",
+                  backgroundColor: "transparent",
+                  color: colors.text.muted,
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  textDecoration: "underline",
+                }}
+              >
+                Clear selection
+              </button>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <span style={{ fontSize: "0.75rem", color: colors.text.muted }}>
+              Enter a price for each product before bulk importing
+            </span>
+            <button
+              onClick={handleBulkImport}
+              disabled={isLoading || getImportableCount() === 0 || !hasOccCredentials}
+              style={{
+                padding: "0.5rem 1rem",
+                backgroundColor: (isLoading || getImportableCount() === 0 || !hasOccCredentials)
+                  ? colors.interactive.disabled
+                  : colors.success.default,
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: (isLoading || getImportableCount() === 0 || !hasOccCredentials) ? "not-allowed" : "pointer",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+              }}
+            >
+              {isLoading && navigation.formData?.get("intent") === "bulk-import"
+                ? "Importing..."
+                : `Import Selected (${getImportableCount()})`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Available Products Tab */}
       {activeTab === "available" && availableProducts.length > 0 && (
         <div style={{
@@ -960,6 +1512,29 @@ export default function AdminPartnerProducts() {
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
+                  {/* Selection Checkbox */}
+                  <div
+                    role="presentation"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      paddingTop: "1.25rem",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedProducts.has(product.partner_variant_id)}
+                      onChange={() => handleSelectProduct(product.partner_variant_id)}
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        cursor: "pointer",
+                      }}
+                      title={selectedProducts.has(product.partner_variant_id) ? "Deselect product" : "Select product for bulk import"}
+                    />
+                  </div>
                   {/* Product Image */}
                   <div style={{
                     width: "64px",
@@ -983,7 +1558,7 @@ export default function AdminPartnerProducts() {
                         }}
                       />
                     ) : (
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="colors.interactive.disabled" strokeWidth="1.5">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.interactive.disabled} strokeWidth="1.5">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <circle cx="8.5" cy="8.5" r="1.5" />
                         <path d="M21 15l-5-5L5 21" />
@@ -1422,6 +1997,138 @@ export default function AdminPartnerProducts() {
         isLoading={isLoading}
         hasOccCredentials={hasOccCredentials}
       />
+
+      {/* Bulk Import Results Modal */}
+      {bulkImportResult && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 50,
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            padding: "1.5rem",
+            maxWidth: "500px",
+            width: "90%",
+            maxHeight: "80vh",
+            overflow: "auto",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+          }}>
+            <h3 style={{ margin: "0 0 1rem", fontSize: "1.25rem", fontWeight: 600 }}>
+              Bulk Import Results
+            </h3>
+
+            {/* Success Count */}
+            {bulkImportResult.succeeded > 0 && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                padding: "0.75rem",
+                backgroundColor: colors.success.light,
+                borderRadius: "4px",
+                marginBottom: "1rem",
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.success.textDark} strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <span style={{ color: colors.success.textDark, fontWeight: 500 }}>
+                  Successfully imported: {bulkImportResult.succeeded} product{bulkImportResult.succeeded !== 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+
+            {/* Failures */}
+            {bulkImportResult.failed.length > 0 && (
+              <div>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  marginBottom: "0.75rem",
+                  color: colors.error.textDark,
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                  <span style={{ fontWeight: 500 }}>
+                    Failed to import: {bulkImportResult.failed.length} product{bulkImportResult.failed.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div style={{
+                  border: `1px solid ${colors.border.default}`,
+                  borderRadius: "4px",
+                  overflow: "hidden",
+                  marginBottom: "1rem",
+                }}>
+                  {bulkImportResult.failed.map((item, index) => (
+                    <div
+                      key={item.variantId}
+                      style={{
+                        padding: "0.75rem",
+                        borderBottom: index < bulkImportResult.failed.length - 1 ? `1px solid ${colors.border.default}` : "none",
+                        backgroundColor: colors.error.light,
+                      }}
+                    >
+                      <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: "0.875rem", color: colors.error.textDark }}>
+                        Error: {item.error}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+              {bulkImportResult.failed.length > 0 && (
+                <button
+                  onClick={handleRetryFailed}
+                  disabled={isLoading}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    backgroundColor: "white",
+                    color: colors.primary.default,
+                    border: `1px solid ${colors.primary.default}`,
+                    borderRadius: "4px",
+                    cursor: isLoading ? "not-allowed" : "pointer",
+                    fontSize: "0.875rem",
+                    fontWeight: 500,
+                  }}
+                >
+                  Retry Failed ({bulkImportResult.failed.length})
+                </button>
+              )}
+              <button
+                onClick={handleBulkResultClose}
+                style={{
+                  padding: "0.5rem 1rem",
+                  backgroundColor: colors.primary.default,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
