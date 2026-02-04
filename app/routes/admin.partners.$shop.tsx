@@ -503,6 +503,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
                   input: {
                     name: "available",
                     reason: "correction",
+                    ignoreCompareQuantity: true,
                     quantities: [
                       {
                         inventoryItemId,
@@ -814,6 +815,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
                     input: {
                       name: "available",
                       reason: "correction",
+                      ignoreCompareQuantity: true,
                       quantities: [
                         {
                           inventoryItemId,

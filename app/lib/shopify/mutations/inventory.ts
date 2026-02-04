@@ -50,6 +50,7 @@ export const INVENTORY_SET_QUANTITIES = `
 export interface InventorySetQuantitiesInput {
   name: string;
   reason: string;
+  ignoreCompareQuantity?: boolean; // Set to true to skip compareQuantity validation
   quantities: Array<{
     inventoryItemId: string;
     locationId: string;
