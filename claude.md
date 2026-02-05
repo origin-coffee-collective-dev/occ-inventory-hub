@@ -273,6 +273,13 @@ occ-inventory-hub/
 ├── app/                          # Main application code
 │   ├── routes/                   # React Router file-based routes
 │   ├── lib/                      # Shared utilities and services
+│   │   ├── email/                # Email notifications (Resend)
+│   │   │   ├── email.server.ts   # Resend client, sendAlertEmail()
+│   │   │   └── templates.server.ts # HTML/text email templates
+│   │   ├── inventory/            # Inventory sync logic
+│   │   │   ├── sync.server.ts    # Main sync orchestration
+│   │   │   ├── retry.server.ts   # Retry logic with backoff
+│   │   │   └── errors.server.ts  # Error classification
 │   │   ├── partners/             # Partner sync logic
 │   │   ├── shopify/              # Shopify API utilities
 │   │   │   ├── queries/          # GraphQL query definitions
@@ -310,11 +317,14 @@ occ-inventory-hub/
 | Route | Purpose |
 |-------|---------|
 | `/admin.tsx` | Admin layout with auth check |
-| `/admin._index.tsx` | Admin dashboard with partner stats |
+| `/admin._index.tsx` | Admin dashboard with partner stats and sync alerts |
 | `/admin.login.tsx` | Admin login page |
 | `/admin.logout.tsx` | Admin logout action |
-| `/admin.partners._index.tsx` | Partners list |
+| `/admin.partners._index.tsx` | Partners list with sync status column |
 | `/admin.partners.$shop.tsx` | Partner products (sync, price, import) |
+| `/admin.inventory-sync.tsx` | Inventory sync dashboard with cron controls |
+| `/admin.settings.tsx` | Settings page with email alert testing |
+| `/admin.my-store.tsx` | Owner store connection management |
 
 **Partner-Facing App (Shopify OAuth - embedded in partner's admin)**
 | Route | Purpose |
@@ -347,12 +357,17 @@ occ-inventory-hub/
 | `app/lib/ownerStore.server.ts` | Parent store token management (client credentials grant, auto-refresh) |
 | `app/lib/shopify/utils/pagination.ts` | Generic GraphQL pagination helpers |
 | `app/lib/shopify/queries/products.ts` | Products GraphQL query |
+| `app/lib/inventory/sync.server.ts` | Inventory sync orchestration with error handling |
+| `app/lib/inventory/retry.server.ts` | Retry wrapper with exponential backoff for API calls |
+| `app/lib/inventory/errors.server.ts` | Error classification and critical failure detection |
+| `app/lib/email/email.server.ts` | Resend client singleton, `sendAlertEmail()` function |
+| `app/lib/email/templates.server.ts` | HTML/text email templates for sync failure alerts |
 
 ### Types
 
 | File | Purpose |
 |------|---------|
-| `app/types/database.ts` | Database model interfaces and insert types |
+| `app/types/database.ts` | Database model interfaces, sync status types, `CriticalSyncError` |
 | `app/types/shopify.ts` | Shopify GraphQL response types |
 
 ---
@@ -369,6 +384,9 @@ occ-inventory-hub/
 - `accessToken` - Nullable (cleared on GDPR redact)
 - `scope` - Granted permissions
 - `isActive`, `isDeleted`, `deletedAt` - Soft-delete support
+- `last_sync_status` - Most recent sync result (`success` | `warning` | `failed`)
+- `last_sync_at` - Timestamp of last sync attempt
+- `consecutive_sync_failures` - Counter for detecting persistent issues (triggers alert at 3+)
 
 **ProductMapping** - Links partner variants to owner's variants
 - Unique on `(partnerShop, partnerVariantId)`
@@ -408,6 +426,11 @@ SUPABASE_SERVICE_KEY=your_service_role_key
 OCC_STORE_DOMAIN=your-store.myshopify.com
 OCC_PARENT_CLIENT_ID=your_parent_app_client_id
 OCC_PARENT_CLIENT_SECRET=your_parent_app_client_secret
+
+# Email Alerts (optional - system works without)
+RESEND_API_KEY=re_xxxxx           # Resend API key for sending alerts
+ALERT_EMAIL_TO=ops@example.com    # Alert recipients (comma-separated)
+ALERT_EMAIL_FROM=alerts@domain.com # Sender address (must be verified in Resend)
 
 # Optional
 DEFAULT_MARGIN=0.30  # Override default markup margin
@@ -692,6 +715,130 @@ write_orders    - Create orders on partner stores
 
 ---
 
+## Error Handling & Email Notifications
+
+The inventory sync system includes comprehensive error handling with automatic retry logic, failure classification, and email alerts for critical issues.
+
+### Critical Failure Types
+
+The system monitors for five types of critical failures that trigger email alerts:
+
+| Failure Type | Detection Criteria | What It Means |
+|--------------|-------------------|---------------|
+| **Token Revoked** | HTTP 401 or "Access denied" error | Partner has uninstalled the app or revoked access |
+| **Store Unreachable** | HTTP 5xx after retries | Partner's Shopify store is down or inaccessible |
+| **High Failure Rate** | >50% of items failed for a partner | Systemic issue with partner's data or API |
+| **Consecutive Failures** | 3+ syncs failed in a row | Persistent problem requiring investigation |
+| **Owner Store Disconnected** | OCC store token refresh fails | Our own store's API access is broken |
+
+### Partner Sync Status Tracking
+
+Each partner has sync status tracked in the database:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `last_sync_status` | `'success' \| 'warning' \| 'failed'` | Result of most recent sync |
+| `last_sync_at` | `timestamptz` | When last sync occurred |
+| `consecutive_sync_failures` | `integer` | Counter for detecting persistent issues |
+
+**Status meanings:**
+- **success** - All items synced without errors
+- **warning** - Sync completed but some items failed (<50%)
+- **failed** - Sync failed completely or >50% of items failed
+
+### Retry Logic
+
+API calls to Shopify are wrapped with automatic retry for transient errors:
+
+```typescript
+import { fetchWithRetry } from "~/lib/inventory/retry.server";
+
+// Automatically retries up to 2 times with exponential backoff
+const result = await fetchWithRetry(() => fetchPartnerInventory(shop, token));
+```
+
+**Retry behavior:**
+- **Max retries:** 2 (total of 3 attempts)
+- **Backoff delays:** 100ms, then 500ms
+- **Retried errors:** HTTP 5xx, timeouts, network errors
+- **NOT retried:** HTTP 401/403 (auth errors), 4xx client errors
+
+### Email Alert System
+
+Alerts are sent via [Resend](https://resend.com) when critical failures are detected.
+
+**Environment variables:**
+```bash
+RESEND_API_KEY=re_xxxxx           # Resend API key
+ALERT_EMAIL_TO=ops@example.com    # Recipients (comma-separated for multiple)
+ALERT_EMAIL_FROM=alerts@yourdomain.com  # Must be from a verified domain in Resend
+```
+
+**Graceful degradation:** If email is not configured, the system logs warnings but continues operating. Check the Settings page (`/admin/settings`) to see if email is configured.
+
+**Testing alerts:** Use the "Send Test Email" button on the Settings page to verify your email configuration.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `app/lib/inventory/retry.server.ts` | Retry wrapper with exponential backoff |
+| `app/lib/inventory/errors.server.ts` | Error classification and critical failure detection |
+| `app/lib/email/email.server.ts` | Resend client singleton, `sendAlertEmail()` function |
+| `app/lib/email/templates.server.ts` | HTML/text email templates for alerts |
+| `app/routes/admin.settings.tsx` | Settings page with email test functionality |
+
+### How Alerts Flow Through the System
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Inventory Sync Runs                       │
+│            (cron job or manual trigger)                      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  For each partner:                                           │
+│  1. Fetch inventory (with retry)                            │
+│  2. Update OCC store quantities (with retry)                │
+│  3. Count successes/failures                                │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Classify result:                                            │
+│  - errors.server.ts: determineSyncStatus() → status         │
+│  - errors.server.ts: detectCriticalFailure() → alert?       │
+└───────────────┬─────────────────────────┬───────────────────┘
+                │                         │
+                ▼                         ▼
+┌───────────────────────────┐   ┌─────────────────────────────┐
+│  Update partner record:    │   │  If critical failure:       │
+│  - last_sync_status        │   │  - Build email template     │
+│  - last_sync_at            │   │  - Send via Resend          │
+│  - consecutive_failures    │   │  - Log result               │
+└───────────────────────────┘   └─────────────────────────────┘
+```
+
+### Admin UI Integration
+
+The sync status is visible in multiple places:
+
+1. **Partners List** (`/admin/partners`) - "Sync Status" column shows ✓ / ⚠ / ✕ with last sync time
+2. **Dashboard** (`/admin`) - Alert card appears when any partner has `failed` or `warning` status
+3. **Inventory Sync** (`/admin/inventory-sync`) - "Partners with Sync Issues" section lists problem partners
+4. **Settings** (`/admin/settings`) - Email configuration status and test button
+
+### Adding New Alert Types
+
+To add a new critical failure type:
+
+1. Add the type to `CriticalSyncError['type']` union in `app/types/database.ts`
+2. Add detection logic in `detectCriticalFailure()` in `app/lib/inventory/errors.server.ts`
+3. Add email template handling in `buildSyncFailureEmail()` in `app/lib/email/templates.server.ts`
+
+---
+
 ## Current Implementation Status
 
 **Completed:**
@@ -699,10 +846,12 @@ write_orders    - Create orders on partner stores
 - Partner products browsing and sync
 - Product import with flexible pricing
 - Partner-facing connection status page
+- Inventory sync with scheduled cron jobs
+- Error handling with retry logic and failure classification
+- Email notifications for critical sync failures
+- Settings page with email alert testing
 
 **Future Development Areas:**
 
-1. **Inventory Sync** - Scheduled jobs to mirror inventory levels
-2. **Order Routing** - Parse SKU prefix, create orders on partner stores (ship to fulfillment center)
-3. **Notifications** - Alert on sync failures or inventory issues
-4. **Price change detection** - Alert when partner prices change
+1. **Order Routing** - Parse SKU prefix, create orders on partner stores (ship to fulfillment center)
+2. **Price change detection** - Alert when partner prices change
