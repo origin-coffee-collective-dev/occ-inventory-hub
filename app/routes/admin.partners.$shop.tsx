@@ -10,6 +10,7 @@ import {
   createProductMapping,
   markPartnerProductSeen,
   unlinkProductMapping,
+  requireAdminSession,
   type PartnerProductRecord,
 } from "~/lib/supabase.server";
 import { ProductDetailModal } from "~/components/ProductDetailModal";
@@ -124,6 +125,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
+  await requireAdminSession(request);
+
   const { shop } = params;
 
   if (!shop) {

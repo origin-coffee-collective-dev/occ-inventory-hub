@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, Form, redirect, useNavigation } from "react-router";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
+import { requireAdminSession } from "~/lib/supabase.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
 import { colors } from "~/lib/tokens";
 
@@ -28,7 +29,9 @@ export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
   } satisfies LoaderData;
 };
 
-export const action = async ({ request: _request }: ActionFunctionArgs) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
+  await requireAdminSession(request);
+
   // Force refresh the token using client credentials
   const tokenResult = await refreshOwnerStoreToken();
 

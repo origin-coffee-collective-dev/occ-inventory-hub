@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, useNavigation, Link, Form } from "react-router";
 import toast from "react-hot-toast";
-import { getAllPartners, getActiveProductMappingsCount, getLatestInventorySyncLog, getAppSettings, type PartnerRecord, type AppSettingsRecord } from "~/lib/supabase.server";
+import { getAllPartners, getActiveProductMappingsCount, getLatestInventorySyncLog, getAppSettings, requireAdminSession, type PartnerRecord, type AppSettingsRecord } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
 import { colors } from "~/lib/tokens";
@@ -39,6 +39,8 @@ interface ActionData {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  await requireAdminSession(request);
+
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
 

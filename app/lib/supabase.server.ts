@@ -68,6 +68,29 @@ export async function verifyAdminSession(sessionToken: string | null): Promise<{
   }
 }
 
+// Extract and verify admin session from a request.
+// Throws a redirect to /admin/login if the session is invalid.
+export async function requireAdminSession(request: Request): Promise<{ userId: string; email: string }> {
+  const cookieHeader = request.headers.get("Cookie") || "";
+  const cookies = Object.fromEntries(
+    cookieHeader.split(";").map((c) => {
+      const [key, ...rest] = c.trim().split("=");
+      return [key, rest.join("=")];
+    })
+  );
+  const sessionToken = cookies[ADMIN_SESSION_COOKIE] || null;
+  const session = await verifyAdminSession(sessionToken);
+
+  if (!session.isValid || !session.userId || !session.email) {
+    throw new Response(null, {
+      status: 302,
+      headers: { Location: "/admin/login" },
+    });
+  }
+
+  return { userId: session.userId, email: session.email };
+}
+
 // Sign in with email and password
 export async function signInAdmin(email: string, password: string): Promise<{
   success: boolean;

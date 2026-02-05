@@ -7,6 +7,7 @@ import {
   updateAppSettings,
   getActiveProductMappingsCount,
   getLatestInventorySyncLog,
+  requireAdminSession,
   type AppSettingsRecord,
 } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
@@ -78,6 +79,8 @@ export const loader = async (_args: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  await requireAdminSession(request);
+
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
 
