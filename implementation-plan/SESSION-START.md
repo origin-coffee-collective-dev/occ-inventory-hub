@@ -19,8 +19,8 @@ I'm working on Phase [PHASE_NUMBER]: [PHASE_NAME].
 | Phase | Name                      | Status         |
 | ----- | ------------------------- | -------------- |
 | 0     | Dev Environment Setup     | ✅ Complete    |
-| 1     | Admin UI + Product Import | 🔄 In Progress |
-| 2     | Inventory Sync            | ⬚ Not Started  |
+| 1     | Admin UI + Product Import | ✅ Complete    |
+| 2     | Inventory Sync            | 🔄 In Progress |
 | 3     | Order Routing             | ⬚ Not Started  |
 
 ## Example Prompts
