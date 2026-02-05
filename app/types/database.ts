@@ -76,6 +76,18 @@ export interface OwnerStore {
   updated_at: string;
 }
 
+export interface AppSettings {
+  id: string;
+  inventory_sync_enabled: boolean;
+  inventory_sync_interval_minutes: number;
+  updated_at: string;
+}
+
+export type AppSettingsUpdate = {
+  inventory_sync_enabled?: boolean;
+  inventory_sync_interval_minutes?: number;
+};
+
 // Sync types for logging operations
 export type SyncType =
   | 'products'
@@ -211,6 +223,10 @@ export interface Database {
         Row: OwnerStore;
         Insert: OwnerStoreInsert;
         Update: Partial<OwnerStoreInsert>;
+      };
+      app_settings: {
+        Row: AppSettings;
+        Update: AppSettingsUpdate;
       };
     };
   };

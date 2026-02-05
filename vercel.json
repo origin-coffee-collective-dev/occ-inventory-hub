@@ -16,7 +16,7 @@
   "crons": [
     {
       "path": "/api/cron/inventory-sync",
-      "schedule": "*/3 * * * *"
+      "schedule": "* * * * *"
     }
   ],
   "routes": [

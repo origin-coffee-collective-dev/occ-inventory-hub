@@ -70,6 +70,9 @@ export default function AdminLayout() {
             <a href="/admin/partners" style={{ color: colors.text.inverse, textDecoration: "none" }}>
               Partners
             </a>
+            <a href="/admin/inventory-sync" style={{ color: colors.text.inverse, textDecoration: "none" }}>
+              Inventory Sync
+            </a>
             <a href="/admin/my-store" style={{ color: colors.text.inverse, textDecoration: "none" }}>
               My Store
             </a>

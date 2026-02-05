@@ -990,6 +990,84 @@ export async function createProductMapping(data: {
 }
 
 // ============================================
+// App Settings Functions
+// ============================================
+
+export interface AppSettingsRecord {
+  id: string;
+  inventory_sync_enabled: boolean;
+  inventory_sync_interval_minutes: number;
+  updated_at: string;
+}
+
+// Fetch the singleton app settings row
+export async function getAppSettings(): Promise<{
+  data: AppSettingsRecord | null;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('app_settings')
+      .select('*')
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return { data: null, error: null };
+      }
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as AppSettingsRecord, error: null };
+  } catch (err) {
+    return { data: null, error: 'Failed to fetch app settings' };
+  }
+}
+
+// Update app settings
+export async function updateAppSettings(updates: {
+  inventory_sync_enabled?: boolean;
+  inventory_sync_interval_minutes?: number;
+}): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+
+    // Get the singleton row ID first
+    const { data: settings } = await client
+      .from('app_settings')
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (!settings) {
+      return { error: 'App settings not found' };
+    }
+
+    const updateFields: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (updates.inventory_sync_enabled !== undefined) {
+      updateFields.inventory_sync_enabled = updates.inventory_sync_enabled;
+    }
+    if (updates.inventory_sync_interval_minutes !== undefined) {
+      updateFields.inventory_sync_interval_minutes = updates.inventory_sync_interval_minutes;
+    }
+
+    const { error } = await client
+      .from('app_settings')
+      .update(updateFields)
+      .eq('id', settings.id);
+
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to update app settings' };
+  }
+}
+
+// ============================================
 // Inventory Sync Functions
 // ============================================
 
