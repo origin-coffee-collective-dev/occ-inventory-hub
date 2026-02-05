@@ -191,6 +191,64 @@ If imported products show "Inventory not tracked":
 | `expires_at` | timestamp | Token expiration time |
 | `location_id` | text | **Cached location GID** (e.g., `gid://shopify/Location/12345`) |
 
+### Shopify Inventory Data Model
+
+Shopify's inventory system is a hierarchy of four entities:
+
+```
+Product ("Ethiopia Yirgacheffe Coffee")
+  │
+  ├── Variant ("12oz Bag")            ← gid://shopify/ProductVariant/111
+  │     └── Inventory Item            ← gid://shopify/InventoryItem/222 (auto-created, separate ID)
+  │           └── Inventory Level     ← quantity: 45 at Location "Main Warehouse"
+  │
+  └── Variant ("2lb Bag")             ← gid://shopify/ProductVariant/333
+        └── Inventory Item            ← gid://shopify/InventoryItem/444
+              └── Inventory Level     ← quantity: 20 at Location "Main Warehouse"
+```
+
+| Entity | What it represents | GID format |
+|--------|-------------------|------------|
+| **Product** | A sellable item (e.g., a coffee blend) | `gid://shopify/Product/...` |
+| **Variant** | A purchasable version of a product (e.g., "12oz Bag" vs "2lb Bag") | `gid://shopify/ProductVariant/...` |
+| **Inventory Item** | Shopify's internal tracking entity, auto-created per variant (separate ID from variant) | `gid://shopify/InventoryItem/...` |
+| **Inventory Level** | The actual stock count, tied to a specific location | N/A (accessed via inventory item + location) |
+
+**Key distinction:** Variant IDs and Inventory Item IDs are **different entities with different GIDs**. The `inventorySetQuantities` mutation requires **inventory item IDs**, not variant IDs. You must resolve variant → inventory item at runtime.
+
+#### How Inventory Sync Resolves the ID Mismatch
+
+Our `product_mappings` table stores **variant IDs** (both partner and OCC) because that's what we get during product import. But inventory mutations need inventory item IDs. The sync resolves this with three API calls:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ product_mappings row:                                       │
+│   partner_variant_id = "gid://shopify/ProductVariant/111"   │
+│   my_variant_id      = "gid://shopify/ProductVariant/XYZ"   │
+└─────────────────┬───────────────────────────┬───────────────┘
+                  │                           │
+    ┌─────────────▼──────────────┐  ┌────────▼──────────────────┐
+    │ Query 1 → Partner Store    │  │ Query 2 → OCC Store       │
+    │ "What's the stock for      │  │ "What's the inventory     │
+    │  variant 111?"             │  │  item ID for variant XYZ?"│
+    │ → inventoryQuantity: 45    │  │ → inventoryItem.id: 222   │
+    └─────────────┬──────────────┘  └────────┬──────────────────┘
+                  │                           │
+                  └──────────┬────────────────┘
+                             │
+               ┌─────────────▼───────────────────┐
+               │ Mutation → OCC Store             │
+               │ "Set inventory item 222 to 45    │
+               │  units at location L"            │
+               └─────────────────────────────────┘
+```
+
+- **Query 1** → partner store: Fetch `inventoryQuantity` for partner variant IDs (via `nodes` batch query, up to 250 per request)
+- **Query 2** → OCC store: Resolve OCC variant IDs to `inventoryItem.id` (via `nodes` batch query, up to 250 per request)
+- **Mutation** → OCC store: `inventorySetQuantities` with resolved inventory item IDs + partner quantities (batches of 10)
+
+The location ID (required for the mutation) is cached in `owner_store.location_id` — see "How Location ID is Obtained" above.
+
 ---
 
 ## Tech Stack

@@ -264,9 +264,16 @@ Use existing `PRODUCTS_QUERY` which already includes:
 
 ## Status
 
-**Phase Status:** Not Started
+**Phase Status:** Iteration 1 Complete
+
+| Iteration | Status | Notes |
+|-----------|--------|-------|
+| 1. Core Sync Logic | **Complete** | Manual "Sync Now" button works, tested end-to-end |
+| 2. Scheduled Cron Job | Not Started | Cron route stub created, needs Vercel cron config + CRON_SECRET |
+| 3. Error Handling & Notifications | Not Started | Needs Resend setup |
+| 4. Admin UI Improvements | Not Started | Sync history page, per-partner sync buttons |
 
 **Prerequisites:**
 - [x] Phase 1 complete (product import working)
-- [ ] Resend account set up
-- [ ] Environment variables configured
+- [ ] Resend account set up (needed for Iteration 3)
+- [ ] CRON_SECRET environment variable configured (needed for Iteration 2)

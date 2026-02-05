@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, useNavigation, Link, Form } from "react-router";
 import toast from "react-hot-toast";
-import { getAllPartners, type PartnerRecord } from "~/lib/supabase.server";
+import { getAllPartners, getActiveProductMappingsCount, getLatestInventorySyncLog, type PartnerRecord } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
+import { runInventorySync } from "~/lib/inventory/sync.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
 import { colors } from "~/lib/tokens";
 
@@ -14,6 +15,17 @@ interface LoaderData {
   ownerStoreError: string | null;
   tokenExpiresAt: string | null;
   storeJustConnected: boolean;
+  importedProductsCount: number;
+  lastInventorySync: {
+    id: string;
+    status: string;
+    items_processed: number;
+    items_updated: number;
+    items_failed: number;
+    error_message: string | null;
+    started_at: string;
+    completed_at: string | null;
+  } | null;
   stats: {
     totalPartners: number;
     activePartners: number;
@@ -22,37 +34,81 @@ interface LoaderData {
 
 interface ActionData {
   success: boolean;
+  intent: string;
   error?: string;
+  syncResult?: {
+    totalItemsUpdated: number;
+    totalItemsFailed: number;
+    totalItemsSkipped: number;
+  };
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
-  const intent = formData.get("intent");
+  const intent = formData.get("intent") as string;
 
   if (intent === "refresh_token") {
     const tokenResult = await refreshOwnerStoreToken();
 
     if (tokenResult.status === "connected") {
-      return { success: true } satisfies ActionData;
+      return { success: true, intent } satisfies ActionData;
     }
 
     return {
       success: false,
+      intent,
       error: tokenResult.error || "Failed to refresh token",
     } satisfies ActionData;
   }
 
-  return { success: false, error: "Unknown action" } satisfies ActionData;
+  if (intent === "inventory_sync") {
+    try {
+      const result = await runInventorySync();
+
+      if (result.success) {
+        return {
+          success: true,
+          intent,
+          syncResult: {
+            totalItemsUpdated: result.totalItemsUpdated,
+            totalItemsFailed: result.totalItemsFailed,
+            totalItemsSkipped: result.totalItemsSkipped,
+          },
+        } satisfies ActionData;
+      }
+
+      return {
+        success: false,
+        intent,
+        error: result.errors.join("; ") || "Inventory sync failed",
+        syncResult: {
+          totalItemsUpdated: result.totalItemsUpdated,
+          totalItemsFailed: result.totalItemsFailed,
+          totalItemsSkipped: result.totalItemsSkipped,
+        },
+      } satisfies ActionData;
+    } catch (err) {
+      return {
+        success: false,
+        intent,
+        error: err instanceof Error ? err.message : "Unexpected sync error",
+      } satisfies ActionData;
+    }
+  }
+
+  return { success: false, intent: intent || "unknown", error: "Unknown action" } satisfies ActionData;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const storeJustConnected = url.searchParams.get("store_connected") === "true";
 
-  // Fetch partners and auto-refresh owner store token in parallel
-  const [{ data: partners }, tokenResult] = await Promise.all([
+  // Fetch all data in parallel
+  const [{ data: partners }, tokenResult, { count: importedProductsCount }, { data: lastInventorySync }] = await Promise.all([
     getAllPartners(),
     getValidOwnerStoreToken(),
+    getActiveProductMappingsCount(),
+    getLatestInventorySyncLog(),
   ]);
 
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
@@ -64,6 +120,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ownerStoreError: tokenResult.error,
     tokenExpiresAt: tokenResult.expiresAt,
     storeJustConnected,
+    importedProductsCount,
+    lastInventorySync,
     stats: {
       totalPartners: partners.length,
       activePartners: activePartners.length,
@@ -72,21 +130,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AdminDashboard() {
-  const { partners, ownerStoreStatus, ownerStoreDomain, ownerStoreError, tokenExpiresAt, storeJustConnected, stats } = useLoaderData<LoaderData>();
+  const { partners, ownerStoreStatus, ownerStoreDomain, ownerStoreError, tokenExpiresAt, storeJustConnected, importedProductsCount, lastInventorySync, stats } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
+  const syncFormRef = useRef<HTMLFormElement>(null);
   const [showRefreshModal, setShowRefreshModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
 
   const isSubmitting = navigation.state === "submitting";
+  const submittingIntent = isSubmitting ? navigation.formData?.get("intent") : null;
+  const isSyncing = submittingIntent === "inventory_sync";
+  const isRefreshing = submittingIntent === "refresh_token";
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
   const prevNavigationState = useRef(navigation.state);
   const hasShownToast = useRef(false);
 
-  // Close modal when submission completes
+  const canSync = ownerStoreStatus === "connected" && importedProductsCount > 0;
+
+  // Close modals when submission completes
   useEffect(() => {
     if (prevNavigationState.current === "submitting" && navigation.state === "idle") {
       setShowRefreshModal(false);
+      setShowSyncModal(false);
     }
     prevNavigationState.current = navigation.state;
   }, [navigation.state]);
@@ -94,10 +160,19 @@ export default function AdminDashboard() {
   // Show toast when actionData changes
   useEffect(() => {
     if (actionData && !hasShownToast.current) {
-      if (actionData.success) {
-        toast.success("Token refreshed successfully");
-      } else if (actionData.error) {
-        toast.error(`Failed to refresh token: ${actionData.error}`);
+      if (actionData.intent === "refresh_token") {
+        if (actionData.success) {
+          toast.success("Token refreshed successfully");
+        } else if (actionData.error) {
+          toast.error(`Failed to refresh token: ${actionData.error}`);
+        }
+      } else if (actionData.intent === "inventory_sync") {
+        if (actionData.success) {
+          const updated = actionData.syncResult?.totalItemsUpdated ?? 0;
+          toast.success(`Inventory sync complete: ${updated} item${updated !== 1 ? "s" : ""} updated`);
+        } else if (actionData.error) {
+          toast.error(`Inventory sync failed: ${actionData.error}`);
+        }
       }
       hasShownToast.current = true;
     }
@@ -346,6 +421,83 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Inventory Sync */}
+      <div style={{
+        backgroundColor: colors.background.card,
+        padding: "1.5rem",
+        borderRadius: "8px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        marginBottom: "2rem",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, margin: 0 }}>
+            Inventory Sync
+          </h2>
+          <button
+            type="button"
+            onClick={() => setShowSyncModal(true)}
+            disabled={!canSync || isSyncing}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: canSync && !isSyncing ? colors.primary.default : colors.interactive.disabled,
+              color: colors.text.inverse,
+              border: "none",
+              borderRadius: "4px",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+              cursor: canSync && !isSyncing ? "pointer" : "not-allowed",
+            }}
+          >
+            {isSyncing ? "Syncing..." : "Sync Now"}
+          </button>
+        </div>
+
+        {importedProductsCount === 0 ? (
+          <p style={{ color: colors.text.muted, margin: 0 }}>
+            No products imported yet. Import products from a partner to enable inventory sync.
+          </p>
+        ) : (
+          <div>
+            <div style={{ fontSize: "0.875rem", color: colors.text.muted, marginBottom: "0.5rem" }}>
+              {importedProductsCount} imported product{importedProductsCount !== 1 ? "s" : ""} tracked
+            </div>
+            {lastInventorySync ? (
+              <div style={{
+                padding: "0.75rem",
+                backgroundColor: colors.background.subtle,
+                borderRadius: "4px",
+                fontSize: "0.875rem",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                  <span style={{
+                    color: lastInventorySync.status === "completed" ? colors.success.default : lastInventorySync.status === "failed" ? colors.error.default : colors.warning.icon,
+                    fontWeight: 500,
+                  }}>
+                    {lastInventorySync.status === "completed" ? "✓" : lastInventorySync.status === "failed" ? "✕" : "○"}
+                  </span>
+                  <span style={{ fontWeight: 500 }}>
+                    Last sync: {lastInventorySync.status}
+                  </span>
+                  <span style={{ color: colors.text.muted }}>
+                    {new Date(lastInventorySync.started_at).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ color: colors.text.muted }}>
+                  {lastInventorySync.items_updated} updated, {lastInventorySync.items_failed} failed
+                  {lastInventorySync.error_message && (
+                    <span style={{ color: colors.error.text }}> — {lastInventorySync.error_message}</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
+                No sync history yet. Click &ldquo;Sync Now&rdquo; to run the first inventory sync.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Recent Partners */}
       <div style={{
         backgroundColor: colors.background.card,
@@ -412,6 +564,11 @@ export default function AdminDashboard() {
         <input type="hidden" name="intent" value="refresh_token" />
       </Form>
 
+      {/* Hidden form for inventory sync */}
+      <Form method="post" ref={syncFormRef} style={{ display: "none" }}>
+        <input type="hidden" name="intent" value="inventory_sync" />
+      </Form>
+
       {/* Token Refresh Confirmation Modal */}
       <ConfirmModal
         isOpen={showRefreshModal}
@@ -421,7 +578,19 @@ export default function AdminDashboard() {
         cancelLabel="Cancel"
         onConfirm={() => formRef.current?.submit()}
         onCancel={() => setShowRefreshModal(false)}
-        isLoading={isSubmitting}
+        isLoading={isRefreshing}
+      />
+
+      {/* Inventory Sync Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showSyncModal}
+        title="Sync Inventory Now?"
+        message={`This will fetch the latest inventory quantities from all partner stores and update ${importedProductsCount} imported product${importedProductsCount !== 1 ? "s" : ""} on your store.`}
+        confirmLabel="Sync Now"
+        cancelLabel="Cancel"
+        onConfirm={() => syncFormRef.current?.submit()}
+        onCancel={() => setShowSyncModal(false)}
+        isLoading={isSyncing}
       />
     </div>
   );

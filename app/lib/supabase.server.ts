@@ -988,3 +988,170 @@ export async function createProductMapping(data: {
     return { id: null, error: 'Failed to create product mapping' };
   }
 }
+
+// ============================================
+// Inventory Sync Functions
+// ============================================
+
+export interface ActiveProductMapping {
+  id: string;
+  partner_shop: string;
+  partner_variant_id: string;
+  my_variant_id: string;
+}
+
+// Get active product mappings, optionally filtered by partner shop
+export async function getActiveProductMappings(partnerShop?: string): Promise<{
+  data: ActiveProductMapping[];
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    let query = client
+      .from('product_mappings')
+      .select('id, partner_shop, partner_variant_id, my_variant_id')
+      .eq('is_active', true);
+
+    if (partnerShop) {
+      query = query.eq('partner_shop', partnerShop);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    return { data: (data || []) as ActiveProductMapping[], error: null };
+  } catch (err) {
+    return { data: [], error: 'Failed to fetch active product mappings' };
+  }
+}
+
+// Count of active product mappings (for dashboard display)
+export async function getActiveProductMappingsCount(): Promise<{
+  count: number;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { count, error } = await client
+      .from('product_mappings')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true);
+
+    if (error) {
+      return { count: 0, error: error.message };
+    }
+
+    return { count: count ?? 0, error: null };
+  } catch (err) {
+    return { count: 0, error: 'Failed to count active product mappings' };
+  }
+}
+
+// Get the most recent inventory sync log
+export async function getLatestInventorySyncLog(): Promise<{
+  data: {
+    id: string;
+    status: string;
+    items_processed: number;
+    items_updated: number;
+    items_failed: number;
+    error_message: string | null;
+    started_at: string;
+    completed_at: string | null;
+  } | null;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('sync_logs')
+      .select('id, status, items_processed, items_updated, items_failed, error_message, started_at, completed_at')
+      .eq('sync_type', 'inventory')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    return { data: null, error: 'Failed to fetch latest inventory sync log' };
+  }
+}
+
+// Create a sync log and return its ID (for updating later)
+export async function createSyncLogReturningId(data: {
+  partnerId?: string;
+  syncType: string;
+  status: string;
+  itemsProcessed?: number;
+  itemsCreated?: number;
+  itemsUpdated?: number;
+  itemsFailed?: number;
+  errorMessage?: string;
+}): Promise<{ id: string | null; error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+    const { data: result, error } = await client
+      .from('sync_logs')
+      .insert({
+        partner_id: data.partnerId,
+        sync_type: data.syncType,
+        status: data.status,
+        items_processed: data.itemsProcessed ?? 0,
+        items_created: data.itemsCreated ?? 0,
+        items_updated: data.itemsUpdated ?? 0,
+        items_failed: data.itemsFailed ?? 0,
+        error_message: data.errorMessage,
+      })
+      .select('id')
+      .single();
+
+    if (error) return { id: null, error: error.message };
+    return { id: result.id, error: null };
+  } catch (err) {
+    return { id: null, error: 'Failed to create sync log' };
+  }
+}
+
+// Update an existing sync log by ID
+export async function updateSyncLogById(
+  id: string,
+  data: {
+    status?: string;
+    itemsProcessed?: number;
+    itemsCreated?: number;
+    itemsUpdated?: number;
+    itemsFailed?: number;
+    errorMessage?: string;
+    completedAt?: string;
+  }
+): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+
+    const updateFields: Record<string, unknown> = {};
+    if (data.status !== undefined) updateFields.status = data.status;
+    if (data.itemsProcessed !== undefined) updateFields.items_processed = data.itemsProcessed;
+    if (data.itemsCreated !== undefined) updateFields.items_created = data.itemsCreated;
+    if (data.itemsUpdated !== undefined) updateFields.items_updated = data.itemsUpdated;
+    if (data.itemsFailed !== undefined) updateFields.items_failed = data.itemsFailed;
+    if (data.errorMessage !== undefined) updateFields.error_message = data.errorMessage;
+    if (data.completedAt !== undefined) updateFields.completed_at = data.completedAt;
+
+    const { error } = await client
+      .from('sync_logs')
+      .update(updateFields)
+      .eq('id', id);
+
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to update sync log' };
+  }
+}
