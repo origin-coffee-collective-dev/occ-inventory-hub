@@ -40,7 +40,6 @@ interface ActionData {
   error?: string;
   newCount?: number;
   updatedCount?: number;
-  importedProductId?: string;
   // Bulk import specific fields
   succeeded?: number;
   failed?: Array<{ title: string; variantId: string; error: string }>;
@@ -255,237 +254,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         success: false,
         intent,
         error: "Failed to sync products",
-      } satisfies ActionData);
-    }
-  }
-
-  // IMPORT: Create product on OCC's store
-  if (intent === "import") {
-    const partnerVariantId = formData.get("partnerVariantId") as string;
-    const sellingPrice = formData.get("sellingPrice") as string;
-
-    if (!partnerVariantId || !sellingPrice) {
-      return Response.json({
-        success: false,
-        intent,
-        error: "Missing required fields",
-      } satisfies ActionData);
-    }
-
-    // Get owner store credentials (auto-refreshes token if needed)
-    const tokenResult = await getValidOwnerStoreToken();
-
-    if (tokenResult.status !== 'connected' || !tokenResult.accessToken) {
-      return Response.json({
-        success: false,
-        intent,
-        error: tokenResult.error || "Parent store not connected. Please connect your store from the dashboard.",
-      } satisfies ActionData);
-    }
-
-    const occStoreDomain = tokenResult.shop!;
-    const occStoreToken = tokenResult.accessToken;
-
-    try {
-      // Get product data from cache
-      const { data: cachedProducts } = await getPartnerProducts(partnerShop);
-      const cachedProduct = cachedProducts.find(p => p.partner_variant_id === partnerVariantId);
-
-      if (!cachedProduct) {
-        return Response.json({
-          success: false,
-          intent,
-          error: "Product not found in cache",
-        } satisfies ActionData);
-      }
-
-      const myPrice = parseFloat(sellingPrice);
-      const partnerPrice = cachedProduct.price;
-      const margin = calculateMargin(partnerPrice, myPrice);
-
-      // Generate SKU for the imported product
-      const mySku = generatePartnerSku(partnerShop, cachedProduct.sku || cachedProduct.partner_variant_id);
-
-      // Create product on OCC's store using direct GraphQL call
-      const productInput = buildProductSetInput({
-        title: cachedProduct.title,
-        vendor: partnerShop.replace('.myshopify.com', ''),
-        sku: mySku,
-        price: formatPrice(myPrice),
-        status: 'ACTIVE',
-        imageUrl: cachedProduct.image_url || undefined,
-      });
-
-      const response = await fetch(
-        `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Shopify-Access-Token': occStoreToken,
-          },
-          body: JSON.stringify({
-            query: PRODUCT_SET_MUTATION,
-            variables: {
-              input: productInput,
-              synchronous: true,
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Shopify API error:", errorText);
-        return Response.json({
-          success: false,
-          intent,
-          error: "Failed to create product on OCC store",
-        } satisfies ActionData);
-      }
-
-      const result = await response.json() as {
-        data: ProductSetResult | null;
-        errors?: Array<{ message: string }>;
-      };
-
-      // Check for GraphQL-level errors first
-      if (result.errors && result.errors.length > 0) {
-        console.error("GraphQL errors:", result.errors);
-        return Response.json({
-          success: false,
-          intent,
-          error: result.errors.map(e => e.message).join(", "),
-        } satisfies ActionData);
-      }
-
-      // Check if data exists
-      if (!result.data || !result.data.productSet) {
-        return Response.json({
-          success: false,
-          intent,
-          error: "Unexpected response from Shopify API",
-        } satisfies ActionData);
-      }
-
-      // Now safe to check userErrors
-      if (result.data.productSet.userErrors.length > 0) {
-        return Response.json({
-          success: false,
-          intent,
-          error: result.data.productSet.userErrors.map(e => e.message).join(", "),
-        } satisfies ActionData);
-      }
-
-      const createdProduct = result.data.productSet.product;
-      if (!createdProduct) {
-        return Response.json({
-          success: false,
-          intent,
-          error: "Product creation failed",
-        } satisfies ActionData);
-      }
-
-      const createdVariant = createdProduct.variants.edges[0]?.node;
-      if (!createdVariant) {
-        return Response.json({
-          success: false,
-          intent,
-          error: "Variant creation failed",
-        } satisfies ActionData);
-      }
-
-      // Setup inventory tracking
-      const inventoryItemId = createdVariant.inventoryItem?.id;
-      const locationId = tokenResult.locationId;
-      const partnerInventoryQty = cachedProduct.inventory_quantity ?? 0;
-
-      if (inventoryItemId && locationId) {
-        // Step 1: Enable inventory tracking
-        const trackingResponse = await fetch(
-          `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Shopify-Access-Token': occStoreToken,
-            },
-            body: JSON.stringify({
-              query: INVENTORY_ITEM_UPDATE,
-              variables: {
-                id: inventoryItemId,
-                input: { tracked: true },
-              },
-            }),
-          }
-        );
-
-        if (trackingResponse.ok) {
-          // Step 2: Set initial inventory quantity
-          await fetch(
-            `https://${occStoreDomain}/admin/api/2025-01/graphql.json`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Shopify-Access-Token': occStoreToken,
-              },
-              body: JSON.stringify({
-                query: INVENTORY_SET_QUANTITIES,
-                variables: {
-                  input: {
-                    name: "available",
-                    reason: "correction",
-                    ignoreCompareQuantity: true,
-                    quantities: [
-                      {
-                        inventoryItemId,
-                        locationId,
-                        quantity: partnerInventoryQty,
-                      },
-                    ],
-                  },
-                },
-              }),
-            }
-          );
-        }
-      }
-
-      // Create product mapping
-      const { error: mappingError } = await createProductMapping({
-        partnerId: partner.id,
-        partnerShop,
-        partnerProductId: cachedProduct.partner_product_id,
-        partnerVariantId: cachedProduct.partner_variant_id,
-        myProductId: createdProduct.id,
-        myVariantId: createdVariant.id,
-        partnerSku: cachedProduct.sku,
-        mySku,
-        partnerPrice,
-        myPrice,
-        margin,
-      });
-
-      if (mappingError) {
-        console.error("Failed to create product mapping:", mappingError);
-      }
-
-      // Mark product as seen (not new)
-      await markPartnerProductSeen(partnerShop, partnerVariantId);
-
-      return Response.json({
-        success: true,
-        intent,
-        message: `Imported "${cachedProduct.title}" at $${formatPrice(myPrice)}`,
-        importedProductId: createdProduct.id,
-      } satisfies ActionData);
-    } catch (error) {
-      console.error("Import error:", error);
-      return Response.json({
-        success: false,
-        intent,
-        error: "Failed to import product",
       } satisfies ActionData);
     }
   }
@@ -861,18 +629,6 @@ export default function AdminPartnerProducts() {
     submit({ intent: "sync" }, { method: "post" });
   };
 
-  const handleImport = (variantId: string) => {
-    const price = priceInputs[variantId];
-    if (!price || parseFloat(price) <= 0) {
-      alert("Please enter a valid price");
-      return;
-    }
-    submit(
-      { intent: "import", partnerVariantId: variantId, sellingPrice: price },
-      { method: "post" }
-    );
-  };
-
   const handlePriceChange = (variantId: string, value: string) => {
     setPriceInputs(prev => ({ ...prev, [variantId]: value }));
   };
@@ -902,7 +658,10 @@ export default function AdminPartnerProducts() {
 
   const handleModalImport = (variantId: string, price: string) => {
     submit(
-      { intent: "import", partnerVariantId: variantId, sellingPrice: price },
+      {
+        intent: "bulk-import",
+        products: JSON.stringify([{ variantId, sellingPrice: price }]),
+      },
       { method: "post" }
     );
     setSelectedProduct(null);
@@ -1512,22 +1271,6 @@ export default function AdminPartnerProducts() {
                         />
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleImport(product.partner_variant_id)}
-                      disabled={isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        backgroundColor: (isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials) ? colors.interactive.disabled : colors.success.default,
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: (isLoading || !priceInputs[product.partner_variant_id] || !hasOccCredentials) ? "not-allowed" : "pointer",
-                        fontSize: "0.875rem",
-                        marginTop: "1.25rem",
-                      }}
-                    >
-                      Import
-                    </button>
                   </div>
                 </div>
               </div>
