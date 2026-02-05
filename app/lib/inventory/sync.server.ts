@@ -459,6 +459,19 @@ async function sendCriticalFailureAlert(error: CriticalSyncError): Promise<void>
 // Main entry point: run inventory sync
 // ---------------------------------------------------------------------------
 
+/**
+ * Sync a single partner's inventory.
+ * This is a convenience wrapper around runInventorySync for UI-triggered per-partner sync.
+ */
+export async function syncSinglePartner(
+  partnerShop: string
+): Promise<PartnerSyncResult | null> {
+  const result = await runInventorySync({ partnerShop });
+
+  // Return the first partner result (should only be one when filtering by partnerShop)
+  return result.partnerResults[0] || null;
+}
+
 export async function runInventorySync(
   options?: { partnerShop?: string }
 ): Promise<InventorySyncResult> {

@@ -1355,3 +1355,141 @@ export async function getPartnerConsecutiveFailures(shop: string): Promise<{
     return { count: 0, error: 'Failed to get partner consecutive failures' };
   }
 }
+
+// ============================================
+// Sync Log Query Functions (Iteration 4)
+// ============================================
+
+export interface SyncLogRecord {
+  id: string;
+  partner_id: string | null;
+  sync_type: string;
+  status: string;
+  items_processed: number;
+  items_created: number;
+  items_updated: number;
+  items_failed: number;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  // Joined partner data (optional)
+  partner_shop?: string;
+}
+
+export interface SyncLogWithPartner extends SyncLogRecord {
+  partners: { shop: string } | null;
+}
+
+// Get paginated sync logs with optional status filter
+export async function getSyncLogs(options: {
+  page?: number;
+  pageSize?: number;
+  statusFilter?: 'all' | 'completed' | 'failed' | 'started';
+  syncType?: string;
+}): Promise<{
+  data: SyncLogWithPartner[];
+  totalCount: number;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const page = options.page ?? 1;
+    const pageSize = options.pageSize ?? 25;
+    const offset = (page - 1) * pageSize;
+
+    // Build query for data
+    let query = client
+      .from('sync_logs')
+      .select('*, partners(shop)', { count: 'exact' })
+      .order('started_at', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    // Apply status filter
+    if (options.statusFilter && options.statusFilter !== 'all') {
+      query = query.eq('status', options.statusFilter);
+    }
+
+    // Apply sync type filter
+    if (options.syncType) {
+      query = query.eq('sync_type', options.syncType);
+    }
+
+    const { data, count, error } = await query;
+
+    if (error) {
+      return { data: [], totalCount: 0, error: error.message };
+    }
+
+    return {
+      data: (data || []) as SyncLogWithPartner[],
+      totalCount: count ?? 0,
+      error: null,
+    };
+  } catch (err) {
+    return { data: [], totalCount: 0, error: 'Failed to fetch sync logs' };
+  }
+}
+
+// Get recent sync logs for dashboard (last N)
+export async function getRecentSyncLogs(limit: number = 5): Promise<{
+  data: SyncLogWithPartner[];
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('sync_logs')
+      .select('*, partners(shop)')
+      .eq('sync_type', 'inventory')
+      .order('started_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    return { data: (data || []) as SyncLogWithPartner[], error: null };
+  } catch (err) {
+    return { data: [], error: 'Failed to fetch recent sync logs' };
+  }
+}
+
+// Get sync logs for a specific partner
+export async function getPartnerSyncLogs(
+  partnerShop: string,
+  limit: number = 10
+): Promise<{
+  data: SyncLogRecord[];
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+
+    // First get the partner ID
+    const { data: partner } = await client
+      .from('partners')
+      .select('id')
+      .eq('shop', partnerShop)
+      .single();
+
+    if (!partner) {
+      return { data: [], error: null };
+    }
+
+    const { data, error } = await client
+      .from('sync_logs')
+      .select('*')
+      .eq('partner_id', partner.id)
+      .eq('sync_type', 'inventory')
+      .order('started_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    return { data: (data || []) as SyncLogRecord[], error: null };
+  } catch (err) {
+    return { data: [], error: 'Failed to fetch partner sync logs' };
+  }
+}

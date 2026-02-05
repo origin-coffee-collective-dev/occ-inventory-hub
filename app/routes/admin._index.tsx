@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, useNavigation, Link, Form } from "react-router";
 import toast from "react-hot-toast";
 import { getAllPartners, getActiveProductMappingsCount, getLatestInventorySyncLog, getAppSettings, getPartnersWithSyncIssues, requireAdminSession, type PartnerRecord, type AppSettingsRecord, type PartnerSyncStatus } from "~/lib/supabase.server";
+import { syncSinglePartner } from "~/lib/inventory/sync.server";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
 import { colors } from "~/lib/tokens";
@@ -65,6 +66,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       intent,
       error: tokenResult.error || "Failed to refresh token",
     } satisfies ActionData;
+  }
+
+  if (intent === "retry_sync") {
+    const partnerShop = formData.get("partnerShop") as string;
+    if (!partnerShop) {
+      return { success: false, intent, error: "Missing partner shop" } satisfies ActionData;
+    }
+
+    try {
+      const result = await syncSinglePartner(partnerShop);
+      if (!result) {
+        return { success: false, intent, error: "No product mappings found" } satisfies ActionData;
+      }
+      if (result.success) {
+        return { success: true, intent } satisfies ActionData;
+      }
+      return { success: false, intent, error: result.errors[0] || "Sync failed" } satisfies ActionData;
+    } catch (err) {
+      return { success: false, intent, error: "Sync failed" } satisfies ActionData;
+    }
   }
 
   return { success: false, intent: intent || "unknown", error: "Unknown action" } satisfies ActionData;
@@ -134,6 +155,12 @@ export default function AdminDashboard() {
           toast.success("Token refreshed successfully");
         } else if (actionData.error) {
           toast.error(`Failed to refresh token: ${actionData.error}`);
+        }
+      } else if (actionData.intent === "retry_sync") {
+        if (actionData.success) {
+          toast.success("Sync completed successfully");
+        } else if (actionData.error) {
+          toast.error(`Sync failed: ${actionData.error}`);
         }
       }
       hasShownToast.current = true;
@@ -208,7 +235,7 @@ export default function AdminDashboard() {
           marginBottom: "1.5rem",
         }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
-            <span style={{ color: colors.error.default, fontSize: "1.25rem", lineHeight: 1 }}>⚠</span>
+            <span style={{ color: colors.error.default, fontSize: "1.25rem", lineHeight: 1 }}>{"\u26A0"}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, color: colors.error.textDark, marginBottom: "0.25rem" }}>
                 Sync Issues Detected
@@ -216,11 +243,14 @@ export default function AdminDashboard() {
               <div style={{ fontSize: "0.875rem", color: colors.error.textDark, marginBottom: "0.5rem" }}>
                 {partnersWithSyncIssues.length} partner{partnersWithSyncIssues.length > 1 ? "s" : ""} ha{partnersWithSyncIssues.length > 1 ? "ve" : "s"} sync issues that may need attention.
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
                 {partnersWithSyncIssues.slice(0, 3).map(partner => (
-                  <span
+                  <div
                     key={partner.id}
                     style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
                       backgroundColor: partner.last_sync_status === "failed" ? colors.error.default : colors.warning.default,
                       color: "white",
                       padding: "0.25rem 0.5rem",
@@ -229,9 +259,31 @@ export default function AdminDashboard() {
                       fontWeight: 500,
                     }}
                   >
-                    {partner.shop.replace(".myshopify.com", "")}
-                    {partner.consecutive_sync_failures > 1 && ` (${partner.consecutive_sync_failures}x)`}
-                  </span>
+                    <span>{partner.shop.replace(".myshopify.com", "")}</span>
+                    {partner.consecutive_sync_failures > 1 && <span>({partner.consecutive_sync_failures}x)</span>}
+                    <Form method="post" style={{ display: "inline" }}>
+                      <input type="hidden" name="intent" value="retry_sync" />
+                      <input type="hidden" name="partnerShop" value={partner.shop} />
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        style={{
+                          background: "rgba(255,255,255,0.3)",
+                          border: "none",
+                          borderRadius: "2px",
+                          padding: "0.125rem 0.375rem",
+                          marginLeft: "0.25rem",
+                          cursor: isSubmitting ? "not-allowed" : "pointer",
+                          color: "white",
+                          fontSize: "0.625rem",
+                          fontWeight: 600,
+                        }}
+                        title="Retry sync"
+                      >
+                        Retry
+                      </button>
+                    </Form>
+                  </div>
                 ))}
                 {partnersWithSyncIssues.length > 3 && (
                   <span style={{ fontSize: "0.75rem", color: colors.error.textDark }}>

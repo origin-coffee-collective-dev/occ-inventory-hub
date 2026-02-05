@@ -11,8 +11,12 @@ import {
   markPartnerProductSeen,
   unlinkProductMapping,
   requireAdminSession,
+  getPartnerSyncLogs,
   type PartnerProductRecord,
+  type PartnerRecord,
+  type SyncLogRecord,
 } from "~/lib/supabase.server";
+import { syncSinglePartner } from "~/lib/inventory/sync.server";
 import { ProductDetailModal } from "~/components/ProductDetailModal";
 import { getValidOwnerStoreToken } from "~/lib/ownerStore.server";
 import { PRODUCTS_QUERY, type ProductsQueryResult } from "~/lib/shopify/queries/products";
@@ -32,6 +36,9 @@ interface LoaderData {
   lastSyncedAt: string | null;
   error?: string;
   hasOccCredentials: boolean;
+  // Sync status data
+  partner: Pick<PartnerRecord, 'last_sync_status' | 'last_sync_at' | 'consecutive_sync_failures'> | null;
+  syncLogs: SyncLogRecord[];
 }
 
 interface ActionData {
@@ -77,6 +84,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
       lastSyncedAt: null,
       error: "Database error",
       hasOccCredentials,
+      partner: null,
+      syncLogs: [],
     } satisfies LoaderData);
   }
 
@@ -88,8 +97,13 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
       lastSyncedAt: null,
       error: "Partner not found or inactive",
       hasOccCredentials,
+      partner: null,
+      syncLogs: [],
     } satisfies LoaderData);
   }
+
+  // Fetch sync logs for this partner
+  const { data: syncLogs } = await getPartnerSyncLogs(partnerShop, 5);
 
   // Fetch cached products (including soft-deleted ones for the Unavailable tab)
   const { data: cachedProducts } = await getPartnerProducts(partnerShop, true);
@@ -121,6 +135,12 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     products,
     lastSyncedAt,
     hasOccCredentials,
+    partner: {
+      last_sync_status: partner.last_sync_status,
+      last_sync_at: partner.last_sync_at,
+      consecutive_sync_failures: partner.consecutive_sync_failures,
+    },
+    syncLogs,
   } satisfies LoaderData);
 };
 
@@ -145,6 +165,44 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       intent,
       error: "Partner not found or credentials unavailable",
     } satisfies ActionData);
+  }
+
+  // SYNC-INVENTORY: Trigger inventory sync for this partner
+  if (intent === "sync-inventory") {
+    try {
+      const result = await syncSinglePartner(partnerShop);
+
+      if (!result) {
+        return Response.json({
+          success: false,
+          intent,
+          error: "No product mappings found for this partner",
+        } satisfies ActionData);
+      }
+
+      if (result.success) {
+        return Response.json({
+          success: true,
+          intent,
+          message: `Synced ${result.itemsUpdated} of ${result.itemsProcessed} items`,
+        } satisfies ActionData);
+      } else {
+        return Response.json({
+          success: false,
+          intent,
+          error: result.errors.length > 0
+            ? result.errors[0]
+            : `Sync failed: ${result.itemsFailed} items failed`,
+        } satisfies ActionData);
+      }
+    } catch (error) {
+      console.error("Inventory sync error:", error);
+      return Response.json({
+        success: false,
+        intent,
+        error: "Failed to run inventory sync",
+      } satisfies ActionData);
+    }
   }
 
   // SYNC: Fetch products from partner API and update local cache
@@ -559,8 +617,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return Response.json({ success: false, intent, error: "Unknown action" } satisfies ActionData);
 };
 
+// Helper to get sync status indicator styles
+function getSyncStatusStyles(status: string | null): {
+  icon: string;
+  color: string;
+  bg: string;
+  label: string;
+} {
+  switch (status) {
+    case "success":
+      return { icon: "\u2713", color: colors.success.default, bg: colors.success.light, label: "OK" };
+    case "warning":
+      return { icon: "\u26A0", color: colors.warning.icon, bg: colors.warning.light, label: "Warning" };
+    case "failed":
+      return { icon: "\u2715", color: colors.error.default, bg: colors.error.light, label: "Failed" };
+    default:
+      return { icon: "\u2014", color: colors.text.muted, bg: colors.background.muted, label: "No sync" };
+  }
+}
+
+// Helper to format duration
+function formatDuration(startedAt: string, completedAt: string | null): string {
+  if (!completedAt) return "In progress";
+  const start = new Date(startedAt).getTime();
+  const end = new Date(completedAt).getTime();
+  const diffMs = end - start;
+
+  if (diffMs < 1000) return `${diffMs}ms`;
+  if (diffMs < 60000) return `${(diffMs / 1000).toFixed(1)}s`;
+  const mins = Math.floor(diffMs / 60000);
+  const secs = Math.round((diffMs % 60000) / 1000);
+  return `${mins}m ${secs}s`;
+}
+
 export default function AdminPartnerProducts() {
-  const { partnerShop, partnerName, products, lastSyncedAt, error, hasOccCredentials } = useLoaderData<LoaderData>();
+  const { partnerShop, partnerName, products, lastSyncedAt, error, hasOccCredentials, partner, syncLogs } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
   const submit = useSubmit();
@@ -848,6 +939,149 @@ export default function AdminPartnerProducts() {
           </button>
         </div>
       </div>
+
+      {/* Inventory Sync Status Card */}
+      {partner && (
+        <div style={{
+          backgroundColor: colors.background.card,
+          padding: "1.25rem",
+          borderRadius: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          marginBottom: "1rem",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+            <div>
+              <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: "0 0 0.5rem" }}>
+                Inventory Sync
+              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                {/* Status Badge */}
+                {(() => {
+                  const statusStyles = getSyncStatusStyles(partner.last_sync_status);
+                  return (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.375rem",
+                        padding: "0.25rem 0.75rem",
+                        borderRadius: "9999px",
+                        backgroundColor: statusStyles.bg,
+                        color: statusStyles.color,
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {statusStyles.icon} {statusStyles.label}
+                    </span>
+                  );
+                })()}
+                {/* Consecutive failures indicator */}
+                {partner.consecutive_sync_failures >= 2 && (
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "4px",
+                    backgroundColor: colors.error.light,
+                    color: colors.error.textDark,
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                  }}>
+                    {partner.consecutive_sync_failures} consecutive failures
+                  </span>
+                )}
+                {/* Last sync time */}
+                {partner.last_sync_at && (
+                  <span style={{ fontSize: "0.75rem", color: colors.text.muted }}>
+                    Last sync: {new Date(partner.last_sync_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => submit({ intent: "sync-inventory" }, { method: "post" })}
+              disabled={isLoading || !hasOccCredentials}
+              style={{
+                padding: "0.5rem 1rem",
+                backgroundColor: (isLoading || !hasOccCredentials) ? colors.interactive.disabled : colors.success.default,
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: (isLoading || !hasOccCredentials) ? "not-allowed" : "pointer",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+              }}
+            >
+              {isLoading && navigation.formData?.get("intent") === "sync-inventory"
+                ? "Syncing..."
+                : "Sync Inventory Now"}
+            </button>
+          </div>
+
+          {/* Recent sync history */}
+          {syncLogs.length > 0 && (
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: colors.text.muted, marginBottom: "0.5rem", textTransform: "uppercase" }}>
+                Recent Sync History
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {syncLogs.map((log) => {
+                  const statusStyles = getSyncStatusStyles(log.status === "completed" ? "success" : log.status);
+                  return (
+                    <div
+                      key={log.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        padding: "0.5rem 0.75rem",
+                        backgroundColor: colors.background.subtle,
+                        borderRadius: "4px",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      <span style={{ color: statusStyles.color }}>{statusStyles.icon}</span>
+                      <span style={{ color: colors.text.muted }}>
+                        {new Date(log.started_at).toLocaleString()}
+                      </span>
+                      <span style={{ color: colors.text.secondary }}>
+                        {log.items_updated}/{log.items_processed} updated
+                      </span>
+                      {log.items_failed > 0 && (
+                        <span style={{ color: colors.error.default }}>
+                          {log.items_failed} failed
+                        </span>
+                      )}
+                      <span style={{ color: colors.text.muted, marginLeft: "auto" }}>
+                        {formatDuration(log.started_at, log.completed_at)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Show error details if last sync failed */}
+              {syncLogs[0]?.status === "failed" && syncLogs[0]?.error_message && (
+                <div style={{
+                  marginTop: "0.75rem",
+                  padding: "0.75rem",
+                  backgroundColor: colors.error.light,
+                  borderRadius: "4px",
+                  border: `1px solid ${colors.error.border}`,
+                }}>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: colors.error.textDark, marginBottom: "0.25rem" }}>
+                    Last Error
+                  </div>
+                  <div style={{ fontSize: "0.8125rem", color: colors.error.textDark, whiteSpace: "pre-wrap" }}>
+                    {syncLogs[0].error_message}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Credentials Warning */}
       {!hasOccCredentials && (

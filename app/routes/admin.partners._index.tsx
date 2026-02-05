@@ -1,6 +1,9 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { useLoaderData, Link } from "react-router";
-import { getAllPartners, type PartnerRecord, type PartnerSyncStatus } from "~/lib/supabase.server";
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import { useLoaderData, Link, Form, useNavigation, useActionData } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import toast, { Toaster } from "react-hot-toast";
+import { getAllPartners, requireAdminSession, type PartnerRecord, type PartnerSyncStatus } from "~/lib/supabase.server";
+import { syncSinglePartner } from "~/lib/inventory/sync.server";
 import { colors } from "~/lib/tokens";
 
 // Helper to format relative time
@@ -42,7 +45,43 @@ interface LoaderData {
   partners: PartnerRecord[];
 }
 
-export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
+interface ActionData {
+  success: boolean;
+  intent: string;
+  error?: string;
+}
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  await requireAdminSession(request);
+
+  const formData = await request.formData();
+  const intent = formData.get("intent") as string;
+
+  if (intent === "retry_sync") {
+    const partnerShop = formData.get("partnerShop") as string;
+    if (!partnerShop) {
+      return { success: false, intent, error: "Missing partner shop" } satisfies ActionData;
+    }
+
+    try {
+      const result = await syncSinglePartner(partnerShop);
+      if (!result) {
+        return { success: false, intent, error: "No product mappings found" } satisfies ActionData;
+      }
+      if (result.success) {
+        return { success: true, intent } satisfies ActionData;
+      }
+      return { success: false, intent, error: result.errors[0] || "Sync failed" } satisfies ActionData;
+    } catch (err) {
+      return { success: false, intent, error: "Sync failed" } satisfies ActionData;
+    }
+  }
+
+  return { success: false, intent: intent || "unknown", error: "Unknown action" } satisfies ActionData;
+};
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await requireAdminSession(request);
   const { data: partners } = await getAllPartners();
 
   return { partners } satisfies LoaderData;
@@ -50,12 +89,49 @@ export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
 
 export default function AdminPartnersList() {
   const { partners } = useLoaderData<LoaderData>();
+  const actionData = useActionData<ActionData>();
+  const navigation = useNavigation();
+  const hasShownToast = useRef(false);
+  const [retryingShop, setRetryingShop] = useState<string | null>(null);
 
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
   const inactivePartners = partners.filter(p => !p.is_active || p.is_deleted);
+  const isSubmitting = navigation.state === "submitting";
+
+  // Track which shop is being retried
+  useEffect(() => {
+    if (navigation.state === "submitting" && navigation.formData?.get("intent") === "retry_sync") {
+      setRetryingShop(navigation.formData.get("partnerShop") as string);
+    }
+    if (navigation.state === "idle") {
+      setRetryingShop(null);
+    }
+  }, [navigation.state, navigation.formData]);
+
+  // Show toast when action completes
+  useEffect(() => {
+    if (actionData && !hasShownToast.current) {
+      if (actionData.intent === "retry_sync") {
+        if (actionData.success) {
+          toast.success("Sync completed successfully");
+        } else if (actionData.error) {
+          toast.error(`Sync failed: ${actionData.error}`);
+        }
+      }
+      hasShownToast.current = true;
+    }
+  }, [actionData]);
+
+  // Reset toast flag when starting a new submission
+  useEffect(() => {
+    if (navigation.state === "submitting") {
+      hasShownToast.current = false;
+    }
+  }, [navigation.state]);
 
   return (
     <div>
+      <Toaster position="top-right" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
         <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
           Partners
@@ -144,20 +220,50 @@ export default function AdminPartnersList() {
                       {new Date(partner.created_at).toLocaleDateString()}
                     </td>
                     <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
-                      <Link
-                        to={`/admin/partners/${partner.shop.replace('.myshopify.com', '')}`}
-                        style={{
-                          display: "inline-block",
-                          padding: "0.5rem 1rem",
-                          backgroundColor: colors.primary.default,
-                          color: colors.text.inverse,
-                          textDecoration: "none",
-                          borderRadius: "4px",
-                          fontSize: "0.875rem",
-                        }}
-                      >
-                        View Products
-                      </Link>
+                      <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                        {/* Retry button for failed syncs */}
+                        {(partner.last_sync_status === "failed" || partner.last_sync_status === "warning") && (
+                          <Form method="post" style={{ display: "inline" }}>
+                            <input type="hidden" name="intent" value="retry_sync" />
+                            <input type="hidden" name="partnerShop" value={partner.shop} />
+                            <button
+                              type="submit"
+                              disabled={isSubmitting && retryingShop === partner.shop}
+                              title={partner.last_sync_status === "failed" ? "Retry failed sync" : "Retry sync with warnings"}
+                              style={{
+                                padding: "0.5rem 0.75rem",
+                                backgroundColor: isSubmitting && retryingShop === partner.shop
+                                  ? colors.interactive.disabled
+                                  : partner.last_sync_status === "failed"
+                                    ? colors.error.default
+                                    : colors.warning.default,
+                                color: "white",
+                                border: "none",
+                                borderRadius: "4px",
+                                fontSize: "0.75rem",
+                                fontWeight: 500,
+                                cursor: isSubmitting && retryingShop === partner.shop ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {isSubmitting && retryingShop === partner.shop ? "Syncing..." : "Retry Sync"}
+                            </button>
+                          </Form>
+                        )}
+                        <Link
+                          to={`/admin/partners/${partner.shop.replace('.myshopify.com', '')}`}
+                          style={{
+                            display: "inline-block",
+                            padding: "0.5rem 1rem",
+                            backgroundColor: colors.primary.default,
+                            color: colors.text.inverse,
+                            textDecoration: "none",
+                            borderRadius: "4px",
+                            fontSize: "0.875rem",
+                          }}
+                        >
+                          View Products
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );

@@ -8,9 +8,11 @@ import {
   getActiveProductMappingsCount,
   getLatestInventorySyncLog,
   getPartnersWithSyncIssues,
+  getRecentSyncLogs,
   requireAdminSession,
   type AppSettingsRecord,
   type PartnerSyncStatus,
+  type SyncLogWithPartner,
 } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { runInventorySync } from "~/lib/inventory/sync.server";
@@ -75,6 +77,7 @@ interface LoaderData {
   importedProductsCount: number;
   ownerStoreStatus: TokenStatus;
   partnersWithSyncIssues: PartnerWithSyncIssue[];
+  recentSyncLogs: SyncLogWithPartner[];
 }
 
 interface ActionData {
@@ -89,13 +92,14 @@ interface ActionData {
 }
 
 export const loader = async (_args: LoaderFunctionArgs) => {
-  const [{ data: settings }, { data: lastInventorySync }, { count: importedProductsCount }, tokenResult, { data: partnersWithSyncIssues }] =
+  const [{ data: settings }, { data: lastInventorySync }, { count: importedProductsCount }, tokenResult, { data: partnersWithSyncIssues }, { data: recentSyncLogs }] =
     await Promise.all([
       getAppSettings(),
       getLatestInventorySyncLog(),
       getActiveProductMappingsCount(),
       getValidOwnerStoreToken(),
       getPartnersWithSyncIssues(),
+      getRecentSyncLogs(10),
     ]);
 
   return {
@@ -104,6 +108,7 @@ export const loader = async (_args: LoaderFunctionArgs) => {
     importedProductsCount,
     ownerStoreStatus: tokenResult.status,
     partnersWithSyncIssues,
+    recentSyncLogs,
   } satisfies LoaderData;
 };
 
@@ -173,7 +178,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function InventorySyncPage() {
-  const { settings, lastInventorySync, importedProductsCount, ownerStoreStatus, partnersWithSyncIssues } = useLoaderData<LoaderData>();
+  const { settings, lastInventorySync, importedProductsCount, ownerStoreStatus, partnersWithSyncIssues, recentSyncLogs } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
 
@@ -482,6 +487,79 @@ export default function InventorySyncPage() {
           <div style={{ fontSize: "0.875rem", color: colors.text.muted }}>
             {importedProductsCount} imported product{importedProductsCount !== 1 ? "s" : ""} tracked. No sync history
             yet.
+          </div>
+        )}
+      </div>
+
+      {/* Recent Sync Activity */}
+      <div
+        style={{
+          backgroundColor: colors.background.card,
+          padding: "1.5rem",
+          borderRadius: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, margin: 0 }}>Recent Sync Activity</h2>
+          <Link
+            to="/admin/sync-history"
+            style={{
+              color: colors.interactive.link,
+              textDecoration: "none",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+            }}
+          >
+            View Full History &rarr;
+          </Link>
+        </div>
+
+        {recentSyncLogs.length === 0 ? (
+          <p style={{ color: colors.text.muted, margin: 0 }}>No sync activity yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {recentSyncLogs.map((log) => {
+              const partnerName = log.partners?.shop?.replace(".myshopify.com", "") || "Unknown";
+              const statusIcon = log.status === "completed" ? "✓" : log.status === "failed" ? "✕" : "○";
+              const statusColor = log.status === "completed" ? colors.success.default : log.status === "failed" ? colors.error.default : colors.info.default;
+
+              return (
+                <div
+                  key={log.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    fontSize: "0.875rem",
+                    padding: "0.5rem 0.75rem",
+                    backgroundColor: colors.background.subtle,
+                    borderRadius: "4px",
+                  }}
+                >
+                  <span style={{ color: statusColor, fontWeight: 600, width: "1rem", textAlign: "center" }}>{statusIcon}</span>
+                  <Link
+                    to={`/admin/partners/${partnerName}`}
+                    style={{ color: colors.interactive.link, textDecoration: "none", minWidth: "100px" }}
+                  >
+                    {partnerName}
+                  </Link>
+                  <span style={{ color: colors.text.muted }}>—</span>
+                  <span style={{ color: colors.text.secondary }}>
+                    {log.items_updated}/{log.items_processed} updated
+                  </span>
+                  {log.items_failed > 0 && (
+                    <span style={{ color: colors.error.default }}>
+                      ({log.items_failed} failed)
+                    </span>
+                  )}
+                  <span style={{ color: colors.text.muted, marginLeft: "auto", fontSize: "0.8125rem" }}>
+                    {formatRelativeTime(log.started_at)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
