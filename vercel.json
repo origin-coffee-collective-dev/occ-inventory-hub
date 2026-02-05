@@ -13,6 +13,12 @@
       "use": "@vercel/node"
     }
   ],
+  "crons": [
+    {
+      "path": "/api/cron/inventory-sync",
+      "schedule": "*/3 * * * *"
+    }
+  ],
   "routes": [
     {
       "src": "/assets/(.*)",

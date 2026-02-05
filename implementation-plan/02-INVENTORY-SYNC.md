@@ -27,7 +27,7 @@
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Sync frequency | Every 30 minutes | Balanced accuracy vs API usage |
+| Sync frequency | Every hour | Coffee inventory changes infrequently; hourly is sufficient |
 | Conflict handling | Partner always wins | Simple, predictable behavior |
 | Sync scope | Inventory only | Price changes require manual review |
 | Sync strategy | Full sync every time | Simple and reliable at scale (~900 products) |
@@ -40,7 +40,7 @@
 
 ### Core Loop
 ```
-Every 30 minutes (cron) or on-demand (Sync Now button):
+Every hour (cron) or on-demand (Sync Now button):
   1. Get all active product mappings grouped by partner
   2. For each partner:
      a. Fetch inventory levels for their products
@@ -53,7 +53,7 @@ Every 30 minutes (cron) or on-demand (Sync Now button):
 ### Triggers
 | Trigger | Frequency | Notes |
 |---------|-----------|-------|
-| Scheduled cron | Every 30 minutes | Vercel cron job |
+| Scheduled cron | Every hour | Vercel cron job |
 | Manual "Sync Now" | On-demand | Button in admin UI |
 
 ### Critical Failure Triggers (send email)
@@ -83,7 +83,7 @@ Every 30 minutes (cron) or on-demand (Sync Now button):
 {
   "crons": [{
     "path": "/api/cron/inventory-sync",
-    "schedule": "*/30 * * * *"
+    "schedule": "0 * * * *"
   }]
 }
 ```
@@ -153,7 +153,7 @@ ALTER TABLE partners ADD COLUMN inventory_sync_status text; -- 'healthy', 'warni
 
 1. Add cron configuration to `vercel.json`
 2. Add cron authentication (secret header verification)
-3. Deploy and verify cron triggers every 30 minutes
+3. Deploy and verify cron triggers every hour
 4. Add sync logging to `sync_logs` table
 
 **Success criteria:** Cron runs automatically, logs visible in database
@@ -212,7 +212,7 @@ ALERT_EMAIL_TO=your-email@example.com
 After implementation, verify:
 
 1. **Manual sync works:** Click "Sync Now" → inventory updates on Shopify
-2. **Cron runs:** Check Vercel logs for cron execution every 30 min
+2. **Cron runs:** Check Vercel logs for cron execution every hour
 3. **Logging works:** See entries in `sync_logs` table after each run
 4. **Error handling:** Disconnect a partner, verify email notification sent
 5. **Admin UI:** Sync history shows accurate data, failures are visible
@@ -264,16 +264,16 @@ Use existing `PRODUCTS_QUERY` which already includes:
 
 ## Status
 
-**Phase Status:** Iteration 1 Complete
+**Phase Status:** Iteration 2 Complete
 
 | Iteration | Status | Notes |
 |-----------|--------|-------|
 | 1. Core Sync Logic | **Complete** | Manual "Sync Now" button works, tested end-to-end |
-| 2. Scheduled Cron Job | Not Started | Cron route stub created, needs Vercel cron config + CRON_SECRET |
+| 2. Scheduled Cron Job | **Complete** | Vercel Cron configured (every hour), GET loader runs sync when CRON_SECRET authenticated |
 | 3. Error Handling & Notifications | Not Started | Needs Resend setup |
 | 4. Admin UI Improvements | Not Started | Sync history page, per-partner sync buttons |
 
 **Prerequisites:**
 - [x] Phase 1 complete (product import working)
 - [ ] Resend account set up (needed for Iteration 3)
-- [ ] CRON_SECRET environment variable configured (needed for Iteration 2)
+- [x] CRON_SECRET environment variable configured (set in Vercel dashboard)

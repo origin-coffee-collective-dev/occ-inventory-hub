@@ -1,8 +1,9 @@
 /**
  * Cron endpoint for inventory sync.
  *
- * Iteration 1: Minimal stub — can be triggered manually via POST.
- * Iteration 2: Will add Vercel cron schedule + CRON_SECRET auth.
+ * GET with valid CRON_SECRET bearer token → runs sync (Vercel Cron)
+ * GET without auth → health check ping
+ * POST with admin session or CRON_SECRET → runs sync (manual "Sync Now" button)
  *
  * Auth: Validates admin session cookie OR CRON_SECRET bearer token.
  */
@@ -11,15 +12,16 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { ADMIN_SESSION_COOKIE, verifyAdminSession } from "~/lib/supabase.server";
 import { runInventorySync } from "~/lib/inventory/sync.server";
 
+function isCronAuthenticated(request: Request): boolean {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) return false;
+  const cronSecret = process.env.CRON_SECRET;
+  return !!cronSecret && authHeader === `Bearer ${cronSecret}`;
+}
+
 async function isAuthorized(request: Request): Promise<boolean> {
   // Check bearer token (for cron jobs)
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader) {
-    const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-      return true;
-    }
-  }
+  if (isCronAuthenticated(request)) return true;
 
   // Check admin session cookie (for manual triggers)
   const cookieHeader = request.headers.get("Cookie") || "";
@@ -34,7 +36,23 @@ async function isAuthorized(request: Request): Promise<boolean> {
   return session.isValid;
 }
 
-export const loader = async (_args: LoaderFunctionArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  // Vercel Cron hits this endpoint with GET + Authorization header
+  if (isCronAuthenticated(request)) {
+    const result = await runInventorySync();
+    return Response.json({
+      success: result.success,
+      trigger: "cron",
+      partnersProcessed: result.partnersProcessed,
+      totalItemsProcessed: result.totalItemsProcessed,
+      totalItemsUpdated: result.totalItemsUpdated,
+      totalItemsFailed: result.totalItemsFailed,
+      totalItemsSkipped: result.totalItemsSkipped,
+      errors: result.errors,
+    });
+  }
+
+  // Unauthenticated GET → health check
   return Response.json({ status: "ok", endpoint: "inventory-sync" });
 };
 
