@@ -264,16 +264,20 @@ Use existing `PRODUCTS_QUERY` which already includes:
 
 ## Status
 
-**Phase Status:** Iteration 2 Complete
+**Phase Status:** Iteration 2 Complete + Cron Controls & Sync Dashboard
 
 | Iteration | Status | Notes |
 |-----------|--------|-------|
 | 1. Core Sync Logic | **Complete** | Manual "Sync Now" button works, tested end-to-end |
-| 2. Scheduled Cron Job | **Complete** | Vercel Cron configured (every hour), GET loader runs sync when CRON_SECRET authenticated |
+| 2. Scheduled Cron Job | **Complete** | Vercel Cron fires every 1 min, gated by `app_settings` table (runtime enable/disable + configurable interval). Dedicated `/admin/inventory-sync` page with toggle, interval selector, Sync Now button, and last sync status. Dashboard shows compact sync summary with link to manage page. |
 | 3. Error Handling & Notifications | Not Started | Needs Resend setup |
-| 4. Admin UI Improvements | Not Started | Sync history page, per-partner sync buttons |
+| 4. Admin UI Improvements | Partially Started | Sync management page created (`/admin/inventory-sync`). Still needed: sync history table, per-partner sync controls |
 
 **Prerequisites:**
 - [x] Phase 1 complete (product import working)
 - [ ] Resend account set up (needed for Iteration 3)
 - [x] CRON_SECRET environment variable configured (set in Vercel dashboard)
+
+**Security hardening (completed alongside Iteration 2):**
+- [x] Removed unused `/app/partners/$shop/products` endpoint (partner cross-access vulnerability)
+- [x] Added `requireAdminSession()` to all admin action handlers (defense-in-depth)
