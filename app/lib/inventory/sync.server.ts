@@ -10,10 +10,13 @@
  * 3. Group mappings by partner_shop
  * 4. For each partner:
  *    a. Get partner credentials
- *    b. Batch-fetch partner variant inventory quantities (250 per request)
- *    c. Batch-resolve OCC variant IDs to inventory item IDs (250 per request)
+ *    b. Batch-fetch partner variant inventory quantities (250 per request) with retry
+ *    c. Batch-resolve OCC variant IDs to inventory item IDs (250 per request) with retry
  *    d. Set quantities on OCC store (batches of 10, ignoreCompareQuantity: true)
- *    e. Log results to sync_logs table
+ *    e. Classify errors and detect critical failures
+ *    f. Update partner sync status in database
+ *    g. Send email alert if critical failure detected
+ *    h. Log results to sync_logs table
  * 5. Return aggregated results
  */
 
@@ -23,6 +26,8 @@ import {
   getPartnerByShop,
   createSyncLogReturningId,
   updateSyncLogById,
+  updatePartnerSyncStatus,
+  getPartnerConsecutiveFailures,
   type ActiveProductMapping,
 } from "~/lib/supabase.server";
 import {
@@ -33,6 +38,16 @@ import {
   type VariantInventoryItemsQueryResult,
   type InventorySetQuantitiesResult,
 } from "~/lib/shopify/queries/inventory";
+import { fetchWithRetry, type RetryResult } from "./retry.server";
+import {
+  determineSyncStatus,
+  detectCriticalFailure,
+  createOwnerStoreDisconnectedError,
+  calculateConsecutiveFailures,
+} from "./errors.server";
+import { sendAlertEmail, isEmailConfigured } from "~/lib/email/email.server";
+import { buildSyncFailureEmail } from "~/lib/email/templates.server";
+import type { SyncErrorType, CriticalSyncError } from "~/types/database";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +61,8 @@ export interface PartnerSyncResult {
   itemsFailed: number;
   itemsSkipped: number;
   errors: string[];
+  // Error classification for critical failure detection
+  errorType: SyncErrorType | null;
 }
 
 export interface InventorySyncResult {
@@ -77,12 +94,18 @@ const API_DELAY_MS = 100; // Rate limiting delay between API calls
 // Generic Shopify GraphQL fetch wrapper
 // ---------------------------------------------------------------------------
 
+interface GraphQLResult<T> {
+  data: T | null;
+  error: string | null;
+  httpStatus: number | null;
+}
+
 async function shopifyGraphQL<T>(
   shop: string,
   accessToken: string,
   query: string,
   variables?: Record<string, unknown>
-): Promise<{ data: T | null; error: string | null }> {
+): Promise<GraphQLResult<T>> {
   try {
     const response = await fetch(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
@@ -97,20 +120,27 @@ async function shopifyGraphQL<T>(
     );
 
     if (!response.ok) {
-      return { data: null, error: `HTTP ${response.status}: ${response.statusText}` };
+      return {
+        data: null,
+        error: `HTTP ${response.status}: ${response.statusText}`,
+        httpStatus: response.status,
+      };
     }
 
     const result = (await response.json()) as { data: T; errors?: Array<{ message: string }> };
 
     if (result.errors?.length) {
-      return { data: null, error: result.errors.map((e) => e.message).join("; ") };
+      // Check for auth-related errors in GraphQL response
+      const errorMessage = result.errors.map((e) => e.message).join("; ");
+      return { data: null, error: errorMessage, httpStatus: response.status };
     }
 
-    return { data: result.data, error: null };
+    return { data: result.data, error: null, httpStatus: response.status };
   } catch (err) {
     return {
       data: null,
       error: err instanceof Error ? err.message : "Unknown GraphQL error",
+      httpStatus: null,
     };
   }
 }
@@ -136,34 +166,53 @@ function chunk<T>(array: T[], size: number): T[][] {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch partner variant inventory quantities
+// Fetch partner variant inventory quantities (with retry)
 // ---------------------------------------------------------------------------
+
+interface FetchInventoryResult {
+  inventory: Map<string, number>;
+  errors: string[];
+  errorType: SyncErrorType | null;
+}
 
 async function fetchPartnerInventory(
   shop: string,
   accessToken: string,
   variantIds: string[]
-): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
+): Promise<FetchInventoryResult> {
+  const inventory = new Map<string, number>();
+  const errors: string[] = [];
+  let errorType: SyncErrorType | null = null;
   const batches = chunk(variantIds, NODES_BATCH_SIZE);
 
   for (const batch of batches) {
-    const { data, error } = await shopifyGraphQL<VariantInventoryQueryResult>(
-      shop,
-      accessToken,
-      VARIANT_INVENTORY_QUERY,
-      { ids: batch }
+    // Use retry wrapper for each batch
+    const retryResult: RetryResult<VariantInventoryQueryResult> = await fetchWithRetry(
+      async () => {
+        const result = await shopifyGraphQL<VariantInventoryQueryResult>(
+          shop,
+          accessToken,
+          VARIANT_INVENTORY_QUERY,
+          { ids: batch }
+        );
+        return result;
+      }
     );
 
-    if (error) {
-      console.error(`[inventory-sync] Error fetching partner inventory from ${shop}:`, error);
+    if (retryResult.error) {
+      console.error(`[inventory-sync] Error fetching partner inventory from ${shop}:`, retryResult.error);
+      errors.push(`Partner fetch error: ${retryResult.error}`);
+      // Keep track of error type for critical failure detection
+      if (retryResult.errorType) {
+        errorType = retryResult.errorType;
+      }
       continue;
     }
 
-    if (data?.nodes) {
-      for (const node of data.nodes) {
+    if (retryResult.data?.nodes) {
+      for (const node of retryResult.data.nodes) {
         if (node?.id && node.inventoryQuantity != null) {
-          result.set(node.id, node.inventoryQuantity);
+          inventory.set(node.id, node.inventoryQuantity);
         }
       }
     }
@@ -171,38 +220,51 @@ async function fetchPartnerInventory(
     if (batches.length > 1) await delay(API_DELAY_MS);
   }
 
-  return result;
+  return { inventory, errors, errorType };
 }
 
 // ---------------------------------------------------------------------------
-// Resolve OCC variant IDs → inventory item IDs
+// Resolve OCC variant IDs → inventory item IDs (with retry)
 // ---------------------------------------------------------------------------
+
+interface ResolveInventoryItemsResult {
+  itemMap: Map<string, string>;
+  errors: string[];
+}
 
 async function resolveInventoryItemIds(
   shop: string,
   accessToken: string,
   variantIds: string[]
-): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
+): Promise<ResolveInventoryItemsResult> {
+  const itemMap = new Map<string, string>();
+  const errors: string[] = [];
   const batches = chunk(variantIds, NODES_BATCH_SIZE);
 
   for (const batch of batches) {
-    const { data, error } = await shopifyGraphQL<VariantInventoryItemsQueryResult>(
-      shop,
-      accessToken,
-      VARIANT_INVENTORY_ITEMS_QUERY,
-      { ids: batch }
+    // Use retry wrapper for each batch
+    const retryResult: RetryResult<VariantInventoryItemsQueryResult> = await fetchWithRetry(
+      async () => {
+        const result = await shopifyGraphQL<VariantInventoryItemsQueryResult>(
+          shop,
+          accessToken,
+          VARIANT_INVENTORY_ITEMS_QUERY,
+          { ids: batch }
+        );
+        return result;
+      }
     );
 
-    if (error) {
-      console.error(`[inventory-sync] Error resolving inventory item IDs from ${shop}:`, error);
+    if (retryResult.error) {
+      console.error(`[inventory-sync] Error resolving inventory item IDs from ${shop}:`, retryResult.error);
+      errors.push(`Resolve error: ${retryResult.error}`);
       continue;
     }
 
-    if (data?.nodes) {
-      for (const node of data.nodes) {
+    if (retryResult.data?.nodes) {
+      for (const node of retryResult.data.nodes) {
         if (node?.id && node.inventoryItem?.id) {
-          result.set(node.id, node.inventoryItem.id);
+          itemMap.set(node.id, node.inventoryItem.id);
         }
       }
     }
@@ -210,7 +272,7 @@ async function resolveInventoryItemIds(
     if (batches.length > 1) await delay(API_DELAY_MS);
   }
 
-  return result;
+  return { itemMap, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -291,30 +353,44 @@ async function syncPartnerInventory(
     itemsFailed: 0,
     itemsSkipped: 0,
     errors: [],
+    errorType: null,
   };
 
-  // Step 1: Fetch partner inventory quantities
+  // Step 1: Fetch partner inventory quantities (with retry)
   const partnerVariantIds = mappings.map((m) => m.partner_variant_id);
-  const partnerInventory = await fetchPartnerInventory(
+  const fetchResult = await fetchPartnerInventory(
     partnerShop,
     partnerAccessToken,
     partnerVariantIds
   );
 
-  // Step 2: Resolve OCC variant IDs → inventory item IDs
+  result.errors.push(...fetchResult.errors);
+  if (fetchResult.errorType) {
+    result.errorType = fetchResult.errorType;
+  }
+
+  // If we couldn't fetch any inventory data due to auth error, fail fast
+  if (fetchResult.errorType === "auth_revoked" && fetchResult.inventory.size === 0) {
+    result.success = false;
+    return result;
+  }
+
+  // Step 2: Resolve OCC variant IDs → inventory item IDs (with retry)
   const occVariantIds = mappings.map((m) => m.my_variant_id);
-  const inventoryItemMap = await resolveInventoryItemIds(
+  const resolveResult = await resolveInventoryItemIds(
     occShop,
     occAccessToken,
     occVariantIds
   );
 
+  result.errors.push(...resolveResult.errors);
+
   // Step 3: Build update list
   const updates: InventoryUpdate[] = [];
 
   for (const mapping of mappings) {
-    const partnerQty = partnerInventory.get(mapping.partner_variant_id);
-    const inventoryItemId = inventoryItemMap.get(mapping.my_variant_id);
+    const partnerQty = fetchResult.inventory.get(mapping.partner_variant_id);
+    const inventoryItemId = resolveResult.itemMap.get(mapping.my_variant_id);
 
     if (partnerQty == null) {
       result.itemsSkipped++;
@@ -356,6 +432,30 @@ async function syncPartnerInventory(
 }
 
 // ---------------------------------------------------------------------------
+// Helper: Send critical failure email alert
+// ---------------------------------------------------------------------------
+
+async function sendCriticalFailureAlert(error: CriticalSyncError): Promise<void> {
+  if (!isEmailConfigured()) {
+    console.warn("[inventory-sync] Email not configured - skipping critical failure alert");
+    return;
+  }
+
+  try {
+    const { subject, html, text } = buildSyncFailureEmail(error);
+    const result = await sendAlertEmail({ subject, html, text });
+
+    if (result.success) {
+      console.log(`[inventory-sync] Critical failure alert sent for ${error.partnerShop}`);
+    } else {
+      console.error(`[inventory-sync] Failed to send critical failure alert: ${result.error}`);
+    }
+  } catch (err) {
+    console.error("[inventory-sync] Exception sending critical failure alert:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point: run inventory sync
 // ---------------------------------------------------------------------------
 
@@ -378,17 +478,25 @@ export async function runInventorySync(
 
   if (tokenResult.status !== "connected" || !tokenResult.accessToken) {
     aggregated.success = false;
-    aggregated.errors.push(
-      `Owner store not connected: ${tokenResult.error || tokenResult.status}`
-    );
+    const errorMsg = `Owner store not connected: ${tokenResult.error || tokenResult.status}`;
+    aggregated.errors.push(errorMsg);
+
+    // Send critical failure alert for owner store disconnection
+    const criticalError = createOwnerStoreDisconnectedError(errorMsg);
+    await sendCriticalFailureAlert(criticalError);
+
     return aggregated;
   }
 
   if (!tokenResult.locationId) {
     aggregated.success = false;
-    aggregated.errors.push(
-      "Owner store location ID not available. Refresh the store connection."
-    );
+    const errorMsg = "Owner store location ID not available. Refresh the store connection.";
+    aggregated.errors.push(errorMsg);
+
+    // Send critical failure alert for owner store configuration issue
+    const criticalError = createOwnerStoreDisconnectedError(errorMsg);
+    await sendCriticalFailureAlert(criticalError);
+
     return aggregated;
   }
 
@@ -429,6 +537,9 @@ export async function runInventorySync(
       continue;
     }
 
+    // Get previous consecutive failures for this partner
+    const { count: previousConsecutiveFailures } = await getPartnerConsecutiveFailures(partnerShop);
+
     // Create sync log entry (status: started)
     const { id: syncLogId } = await createSyncLogReturningId({
       partnerId: partner.id,
@@ -446,6 +557,29 @@ export async function runInventorySync(
       locationId,
       partnerMappings
     );
+
+    // Determine sync status and calculate new consecutive failures
+    const syncStatus = determineSyncStatus(partnerResult);
+    const newConsecutiveFailures = calculateConsecutiveFailures(
+      previousConsecutiveFailures,
+      partnerResult.success
+    );
+
+    // Update partner sync status in database
+    await updatePartnerSyncStatus(partnerShop, syncStatus, newConsecutiveFailures);
+
+    // Check for critical failure and send email alert
+    const criticalError = detectCriticalFailure(
+      partnerShop,
+      partnerResult,
+      previousConsecutiveFailures,
+      partnerResult.errorType
+    );
+
+    if (criticalError) {
+      console.warn(`[inventory-sync] Critical failure detected for ${partnerShop}:`, criticalError.type);
+      await sendCriticalFailureAlert(criticalError);
+    }
 
     // Update sync log with results
     if (syncLogId) {

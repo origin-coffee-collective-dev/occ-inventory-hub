@@ -7,13 +7,31 @@ import {
   updateAppSettings,
   getActiveProductMappingsCount,
   getLatestInventorySyncLog,
+  getPartnersWithSyncIssues,
   requireAdminSession,
   type AppSettingsRecord,
+  type PartnerSyncStatus,
 } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { runInventorySync } from "~/lib/inventory/sync.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
 import { colors } from "~/lib/tokens";
+
+// Helper to format relative time
+function formatRelativeTime(dateString: string | null): string {
+  if (!dateString) return "Never";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
 
 const INTERVAL_OPTIONS = [
   { value: 1, label: "1 minute" },
@@ -34,6 +52,14 @@ function formatInterval(minutes: number): string {
   return `${hours} hour${hours !== 1 ? "s" : ""}`;
 }
 
+interface PartnerWithSyncIssue {
+  id: string;
+  shop: string;
+  last_sync_status: PartnerSyncStatus;
+  last_sync_at: string | null;
+  consecutive_sync_failures: number;
+}
+
 interface LoaderData {
   settings: AppSettingsRecord | null;
   lastInventorySync: {
@@ -48,6 +74,7 @@ interface LoaderData {
   } | null;
   importedProductsCount: number;
   ownerStoreStatus: TokenStatus;
+  partnersWithSyncIssues: PartnerWithSyncIssue[];
 }
 
 interface ActionData {
@@ -62,12 +89,13 @@ interface ActionData {
 }
 
 export const loader = async (_args: LoaderFunctionArgs) => {
-  const [{ data: settings }, { data: lastInventorySync }, { count: importedProductsCount }, tokenResult] =
+  const [{ data: settings }, { data: lastInventorySync }, { count: importedProductsCount }, tokenResult, { data: partnersWithSyncIssues }] =
     await Promise.all([
       getAppSettings(),
       getLatestInventorySyncLog(),
       getActiveProductMappingsCount(),
       getValidOwnerStoreToken(),
+      getPartnersWithSyncIssues(),
     ]);
 
   return {
@@ -75,6 +103,7 @@ export const loader = async (_args: LoaderFunctionArgs) => {
     lastInventorySync,
     importedProductsCount,
     ownerStoreStatus: tokenResult.status,
+    partnersWithSyncIssues,
   } satisfies LoaderData;
 };
 
@@ -144,7 +173,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function InventorySyncPage() {
-  const { settings, lastInventorySync, importedProductsCount, ownerStoreStatus } = useLoaderData<LoaderData>();
+  const { settings, lastInventorySync, importedProductsCount, ownerStoreStatus, partnersWithSyncIssues } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
 
@@ -456,6 +485,86 @@ export default function InventorySyncPage() {
           </div>
         )}
       </div>
+
+      {/* Partners with Sync Issues */}
+      {partnersWithSyncIssues.length > 0 && (
+        <div
+          style={{
+            backgroundColor: colors.background.card,
+            padding: "1.5rem",
+            borderRadius: "8px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem", color: colors.error.textDark }}>
+            Partners with Sync Issues ({partnersWithSyncIssues.length})
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {partnersWithSyncIssues.map((partner) => (
+              <div
+                key={partner.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0.75rem 1rem",
+                  backgroundColor: partner.last_sync_status === "failed" ? colors.error.light : colors.warning.light,
+                  borderRadius: "6px",
+                  border: `1px solid ${partner.last_sync_status === "failed" ? colors.error.border : colors.warning.border}`,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      backgroundColor: partner.last_sync_status === "failed" ? colors.error.default : colors.warning.default,
+                      color: "white",
+                      fontSize: "0.875rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {partner.last_sync_status === "failed" ? "✕" : "⚠"}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 500, color: colors.text.primary }}>
+                      {partner.shop.replace(".myshopify.com", "")}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: colors.text.muted }}>
+                      Last sync: {formatRelativeTime(partner.last_sync_at)}
+                      {partner.consecutive_sync_failures > 1 && (
+                        <span style={{ color: colors.error.default, marginLeft: "0.5rem" }}>
+                          ({partner.consecutive_sync_failures} consecutive failures)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <Link
+                  to={`/admin/partners/${partner.shop.replace(".myshopify.com", "")}`}
+                  style={{
+                    padding: "0.5rem 0.75rem",
+                    backgroundColor: colors.background.card,
+                    color: colors.text.secondary,
+                    textDecoration: "none",
+                    borderRadius: "4px",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    border: `1px solid ${colors.border.default}`,
+                  }}
+                >
+                  View Partner
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Hidden form for settings update */}
       <Form method="post" ref={settingsFormRef} style={{ display: "none" }}>

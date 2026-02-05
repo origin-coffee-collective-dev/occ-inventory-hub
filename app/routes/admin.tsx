@@ -76,6 +76,9 @@ export default function AdminLayout() {
             <a href="/admin/my-store" style={{ color: colors.text.inverse, textDecoration: "none" }}>
               My Store
             </a>
+            <a href="/admin/settings" style={{ color: colors.text.inverse, textDecoration: "none" }}>
+              Settings
+            </a>
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>

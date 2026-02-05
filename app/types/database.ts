@@ -1,3 +1,6 @@
+// Partner sync status values
+export type PartnerSyncStatus = 'success' | 'warning' | 'failed';
+
 export interface Partner {
   id: string;
   shop: string;
@@ -8,6 +11,10 @@ export interface Partner {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  // Sync status tracking (Iteration 3)
+  last_sync_status: PartnerSyncStatus | null;
+  last_sync_at: string | null;
+  consecutive_sync_failures: number;
 }
 
 export interface ProductMapping {
@@ -120,6 +127,10 @@ export type PartnerInsert = {
   is_active?: boolean;
   is_deleted?: boolean;
   deleted_at?: string | null;
+  // Sync status fields (optional - have defaults)
+  last_sync_status?: PartnerSyncStatus | null;
+  last_sync_at?: string | null;
+  consecutive_sync_failures?: number;
 };
 
 export type ProductMappingInsert = {
@@ -230,4 +241,28 @@ export interface Database {
       };
     };
   };
+}
+
+// ============================================
+// Inventory Sync Error Types (Iteration 3)
+// ============================================
+
+// Classification of sync errors for determining severity and response
+export type SyncErrorType =
+  | 'auth_revoked'        // HTTP 401 or "Access denied" - token invalid/revoked
+  | 'store_unreachable'   // HTTP 5xx, timeout, or network error
+  | 'rate_limited'        // HTTP 429 - too many requests
+  | 'partial_failure'     // Some items failed within a batch
+  | 'transient'           // Temporary error that may resolve on retry
+  | 'unknown';            // Unclassified error
+
+// Represents a critical sync failure that requires notification
+export interface CriticalSyncError {
+  type: 'token_revoked' | 'store_unreachable' | 'high_failure_rate' | 'consecutive_failures' | 'owner_store_disconnected';
+  partnerShop: string;
+  message: string;
+  details?: string;
+  httpStatus?: number;
+  consecutiveFailures?: number;
+  failureRate?: number;
 }

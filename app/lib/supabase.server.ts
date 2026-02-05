@@ -3,6 +3,9 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
+// Partner sync status values
+export type PartnerSyncStatus = 'success' | 'warning' | 'failed';
+
 // Partner type matching the database schema (snake_case column names)
 export interface PartnerRecord {
   id: string;
@@ -14,6 +17,10 @@ export interface PartnerRecord {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  // Sync status tracking (Iteration 3)
+  last_sync_status: PartnerSyncStatus | null;
+  last_sync_at: string | null;
+  consecutive_sync_failures: number;
 }
 
 // Server-side Supabase client with service role key
@@ -1254,5 +1261,97 @@ export async function updateSyncLogById(
     return { error: null };
   } catch (err) {
     return { error: 'Failed to update sync log' };
+  }
+}
+
+// ============================================
+// Partner Sync Status Functions (Iteration 3)
+// ============================================
+
+// Update partner sync status after inventory sync
+export async function updatePartnerSyncStatus(
+  shop: string,
+  status: PartnerSyncStatus,
+  consecutiveFailures: number
+): Promise<{ error: string | null }> {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('partners')
+      .update({
+        last_sync_status: status,
+        last_sync_at: new Date().toISOString(),
+        consecutive_sync_failures: consecutiveFailures,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('shop', shop);
+
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (err) {
+    return { error: 'Failed to update partner sync status' };
+  }
+}
+
+// Get partners with sync issues (for dashboard display)
+export async function getPartnersWithSyncIssues(): Promise<{
+  data: Array<{
+    id: string;
+    shop: string;
+    last_sync_status: PartnerSyncStatus;
+    last_sync_at: string | null;
+    consecutive_sync_failures: number;
+  }>;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('partners')
+      .select('id, shop, last_sync_status, last_sync_at, consecutive_sync_failures')
+      .eq('is_active', true)
+      .eq('is_deleted', false)
+      .in('last_sync_status', ['warning', 'failed'])
+      .order('consecutive_sync_failures', { ascending: false });
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    // Cast the data to the expected type (we know last_sync_status won't be null due to the filter)
+    const typedData = (data || []).map(row => ({
+      ...row,
+      last_sync_status: row.last_sync_status as PartnerSyncStatus,
+    }));
+
+    return { data: typedData, error: null };
+  } catch (err) {
+    return { data: [], error: 'Failed to fetch partners with sync issues' };
+  }
+}
+
+// Get the current consecutive failures count for a partner
+export async function getPartnerConsecutiveFailures(shop: string): Promise<{
+  count: number;
+  error: string | null;
+}> {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('partners')
+      .select('consecutive_sync_failures')
+      .eq('shop', shop)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return { count: 0, error: null };
+      }
+      return { count: 0, error: error.message };
+    }
+
+    return { count: data?.consecutive_sync_failures ?? 0, error: null };
+  } catch (err) {
+    return { count: 0, error: 'Failed to get partner consecutive failures' };
   }
 }

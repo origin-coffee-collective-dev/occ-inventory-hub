@@ -2,10 +2,18 @@ import { useState, useRef, useEffect } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useActionData, useNavigation, Link, Form } from "react-router";
 import toast from "react-hot-toast";
-import { getAllPartners, getActiveProductMappingsCount, getLatestInventorySyncLog, getAppSettings, requireAdminSession, type PartnerRecord, type AppSettingsRecord } from "~/lib/supabase.server";
+import { getAllPartners, getActiveProductMappingsCount, getLatestInventorySyncLog, getAppSettings, getPartnersWithSyncIssues, requireAdminSession, type PartnerRecord, type AppSettingsRecord, type PartnerSyncStatus } from "~/lib/supabase.server";
 import { getValidOwnerStoreToken, refreshOwnerStoreToken, type TokenStatus } from "~/lib/ownerStore.server";
 import { ConfirmModal } from "~/components/ConfirmModal";
 import { colors } from "~/lib/tokens";
+
+interface PartnerWithSyncIssue {
+  id: string;
+  shop: string;
+  last_sync_status: PartnerSyncStatus;
+  last_sync_at: string | null;
+  consecutive_sync_failures: number;
+}
 
 interface LoaderData {
   partners: PartnerRecord[];
@@ -26,6 +34,7 @@ interface LoaderData {
     completed_at: string | null;
   } | null;
   syncSettings: AppSettingsRecord | null;
+  partnersWithSyncIssues: PartnerWithSyncIssue[];
   stats: {
     totalPartners: number;
     activePartners: number;
@@ -66,12 +75,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const storeJustConnected = url.searchParams.get("store_connected") === "true";
 
   // Fetch all data in parallel
-  const [{ data: partners }, tokenResult, { count: importedProductsCount }, { data: lastInventorySync }, { data: syncSettings }] = await Promise.all([
+  const [{ data: partners }, tokenResult, { count: importedProductsCount }, { data: lastInventorySync }, { data: syncSettings }, { data: partnersWithSyncIssues }] = await Promise.all([
     getAllPartners(),
     getValidOwnerStoreToken(),
     getActiveProductMappingsCount(),
     getLatestInventorySyncLog(),
     getAppSettings(),
+    getPartnersWithSyncIssues(),
   ]);
 
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
@@ -86,6 +96,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     importedProductsCount,
     lastInventorySync,
     syncSettings,
+    partnersWithSyncIssues,
     stats: {
       totalPartners: partners.length,
       activePartners: activePartners.length,
@@ -94,7 +105,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AdminDashboard() {
-  const { partners, ownerStoreStatus, ownerStoreDomain, ownerStoreError, tokenExpiresAt, storeJustConnected, lastInventorySync, syncSettings, stats } = useLoaderData<LoaderData>();
+  const { partners, ownerStoreStatus, ownerStoreDomain, ownerStoreError, tokenExpiresAt, storeJustConnected, lastInventorySync, syncSettings, partnersWithSyncIssues, stats } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -184,6 +195,67 @@ export default function AdminDashboard() {
           marginBottom: "1.5rem",
         }}>
           Parent store connected successfully.
+        </div>
+      )}
+
+      {/* Sync Issues Alert */}
+      {partnersWithSyncIssues.length > 0 && (
+        <div style={{
+          backgroundColor: colors.error.light,
+          border: `1px solid ${colors.error.border}`,
+          borderRadius: "8px",
+          padding: "1rem",
+          marginBottom: "1.5rem",
+        }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+            <span style={{ color: colors.error.default, fontSize: "1.25rem", lineHeight: 1 }}>⚠</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, color: colors.error.textDark, marginBottom: "0.25rem" }}>
+                Sync Issues Detected
+              </div>
+              <div style={{ fontSize: "0.875rem", color: colors.error.textDark, marginBottom: "0.5rem" }}>
+                {partnersWithSyncIssues.length} partner{partnersWithSyncIssues.length > 1 ? "s" : ""} ha{partnersWithSyncIssues.length > 1 ? "ve" : "s"} sync issues that may need attention.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                {partnersWithSyncIssues.slice(0, 3).map(partner => (
+                  <span
+                    key={partner.id}
+                    style={{
+                      backgroundColor: partner.last_sync_status === "failed" ? colors.error.default : colors.warning.default,
+                      color: "white",
+                      padding: "0.25rem 0.5rem",
+                      borderRadius: "4px",
+                      fontSize: "0.75rem",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {partner.shop.replace(".myshopify.com", "")}
+                    {partner.consecutive_sync_failures > 1 && ` (${partner.consecutive_sync_failures}x)`}
+                  </span>
+                ))}
+                {partnersWithSyncIssues.length > 3 && (
+                  <span style={{ fontSize: "0.75rem", color: colors.error.textDark }}>
+                    +{partnersWithSyncIssues.length - 3} more
+                  </span>
+                )}
+              </div>
+            </div>
+            <Link
+              to="/admin/inventory-sync"
+              style={{
+                padding: "0.5rem 0.75rem",
+                backgroundColor: colors.error.default,
+                color: "white",
+                textDecoration: "none",
+                borderRadius: "4px",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+            >
+              View Details
+            </Link>
+          </div>
         </div>
       )}
 
