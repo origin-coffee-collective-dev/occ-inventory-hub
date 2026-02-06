@@ -41,8 +41,22 @@ function getSyncStatusStyles(status: PartnerSyncStatus | null): {
   }
 }
 
+// Client-side domain validation (mirrors server-side validateShopDomain)
+function normalizeShopDomain(input: string): string | null {
+  let domain = input.trim().toLowerCase();
+  if (!domain) return null;
+  if (!domain.endsWith(".myshopify.com")) {
+    domain = `${domain}.myshopify.com`;
+  }
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) {
+    return null;
+  }
+  return domain;
+}
+
 interface LoaderData {
   partners: PartnerRecord[];
+  appUrl: string | null;
 }
 
 interface ActionData {
@@ -84,15 +98,47 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await requireAdminSession(request);
   const { data: partners } = await getAllPartners();
 
-  return { partners } satisfies LoaderData;
+  return {
+    partners,
+    appUrl: process.env.SHOPIFY_APP_URL || null,
+  } satisfies LoaderData;
 };
 
 export default function AdminPartnersList() {
-  const { partners } = useLoaderData<LoaderData>();
+  const { partners, appUrl } = useLoaderData<LoaderData>();
   const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
   const hasShownToast = useRef(false);
   const [retryingShop, setRetryingShop] = useState<string | null>(null);
+  const [inviteShop, setInviteShop] = useState("");
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  const handleGenerateLink = () => {
+    const domain = normalizeShopDomain(inviteShop);
+    if (!domain) {
+      setInviteError("Enter a valid Shopify domain (e.g. best-roastery or best-roastery.myshopify.com)");
+      setInviteLink(null);
+      return;
+    }
+    if (!appUrl) {
+      setInviteError("App URL is not configured. Set SHOPIFY_APP_URL in your environment.");
+      setInviteLink(null);
+      return;
+    }
+    setInviteError(null);
+    setInviteLink(`${appUrl}/partner/install?shop=${domain}`);
+  };
+
+  const handleCopyLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      toast.success("Link copied to clipboard");
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
 
   const activePartners = partners.filter(p => p.is_active && !p.is_deleted);
   const inactivePartners = partners.filter(p => !p.is_active || p.is_deleted);
@@ -136,6 +182,116 @@ export default function AdminPartnersList() {
         <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
           Partners
         </h1>
+      </div>
+
+      {/* Invite a Partner */}
+      <div style={{
+        backgroundColor: colors.background.card,
+        padding: "1.5rem",
+        borderRadius: "8px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        marginBottom: "1.5rem",
+      }}>
+        <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+          Invite a Partner
+        </h2>
+        <p style={{ fontSize: "0.875rem", color: colors.text.muted, marginTop: 0, marginBottom: "1rem" }}>
+          Generate an install link to send to a new partner. They&apos;ll authorize the app on their Shopify store.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="text"
+            value={inviteShop}
+            onChange={(e) => {
+              setInviteShop(e.target.value);
+              setInviteLink(null);
+              setInviteError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleGenerateLink();
+              }
+            }}
+            placeholder="best-roastery or best-roastery.myshopify.com"
+            style={{
+              flex: 1,
+              padding: "0.5rem 0.75rem",
+              border: `1px solid ${colors.border.default}`,
+              borderRadius: "4px",
+              fontSize: "0.875rem",
+              outline: "none",
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleGenerateLink}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: colors.primary.default,
+              color: colors.primary.text,
+              border: "none",
+              borderRadius: "4px",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Generate Link
+          </button>
+        </div>
+        {inviteError && (
+          <div style={{
+            marginTop: "0.75rem",
+            padding: "0.5rem 0.75rem",
+            backgroundColor: colors.error.light,
+            border: `1px solid ${colors.error.border}`,
+            borderRadius: "4px",
+            color: colors.error.textDark,
+            fontSize: "0.875rem",
+          }}>
+            {inviteError}
+          </div>
+        )}
+        {inviteLink && (
+          <div style={{
+            marginTop: "0.75rem",
+            padding: "0.5rem 0.75rem",
+            backgroundColor: colors.background.muted,
+            border: `1px solid ${colors.border.default}`,
+            borderRadius: "4px",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+          }}>
+            <code style={{
+              flex: 1,
+              fontSize: "0.8rem",
+              color: colors.text.secondary,
+              wordBreak: "break-all",
+            }}>
+              {inviteLink}
+            </code>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              style={{
+                padding: "0.375rem 0.75rem",
+                backgroundColor: colors.success.default,
+                color: colors.text.inverse,
+                border: "none",
+                borderRadius: "4px",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Copy
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Active Partners */}
